@@ -44,7 +44,7 @@ function resolvePath(p: string): string {
     : path.resolve(p);
 }
 
-function scanDocs(docsDir: string): DocFile[] {
+function scanDocs(docsDir: string, relativeTo = docsDir): DocFile[] {
   if (!fs.existsSync(docsDir)) return [];
 
   const results: DocFile[] = [];
@@ -53,6 +53,7 @@ function scanDocs(docsDir: string): DocFile[] {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
+        if (entry.name === "external") continue;
         walk(fullPath);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
         const content = fs.readFileSync(fullPath, "utf8");
@@ -65,7 +66,7 @@ function scanDocs(docsDir: string): DocFile[] {
         const body = content.slice(match[0].length).trim();
         const title = parseTitle(body);
         const relativePath = path
-          .relative(docsDir, fullPath)
+          .relative(relativeTo, fullPath)
           .replace(/\\/g, "/");
         results.push({
           filePath: fullPath,
@@ -93,14 +94,14 @@ export function docsCommand(opts: { also?: string[] }): void {
   const projectRoot = manifestPath ? path.dirname(manifestPath) : process.cwd();
   const manifest = manifestPath ? readManifest(manifestPath) : null;
   const docsDir = path.join(projectRoot, "docs");
+  const also = opts.also ?? manifest?.docs.also ?? [];
 
-  // Scan both local docs/ and external docs/
   const localDocs = scanDocs(docsDir);
   const externalDocsDir = path.join(
     projectRoot,
-    manifest?.paths.docs[0] ?? "docs/external",
+    manifest?.docs.path ?? "docs/external",
   );
-  const externalDocs = scanDocs(externalDocsDir);
+  const externalDocs = scanDocs(externalDocsDir, docsDir);
   const docs = [...localDocs, ...externalDocs];
 
   if (docs.length === 0) {
@@ -108,7 +109,6 @@ export function docsCommand(opts: { also?: string[] }): void {
     return;
   }
 
-  // Group docs by target directory
   const byTarget = new Map<string, DocFile[]>();
 
   for (const doc of docs) {
@@ -125,33 +125,6 @@ export function docsCommand(opts: { also?: string[] }): void {
 
       if (!byTarget.has(targetDir)) byTarget.set(targetDir, []);
       byTarget.get(targetDir)?.push(doc);
-    }
-  }
-
-  // Also include external docs from vulyk.json manifest
-  if (manifest) {
-    for (const [name, entry] of Object.entries(manifest.docs)) {
-      const externalFile = path.join(
-        projectRoot,
-        manifest.paths.docs[0] ?? "docs/external",
-        `${name}.md`,
-      );
-      if (!fs.existsSync(externalFile)) continue;
-      const body = fs.readFileSync(externalFile, "utf8");
-      const title = parseTitle(body);
-      for (const targetPath of entry.targets) {
-        const targetDir = getTargetDir(
-          resolvePath(path.join(projectRoot, targetPath)),
-        );
-        if (!byTarget.has(targetDir)) byTarget.set(targetDir, []);
-        byTarget.get(targetDir)?.push({
-          filePath: externalFile,
-          paths: entry.targets,
-          description: entry.description ?? "",
-          title,
-          relativePath: `external/${name}.md`,
-        });
-      }
     }
   }
 
@@ -175,22 +148,19 @@ export function docsCommand(opts: { also?: string[] }): void {
     log.success(`Generated ${rel}`);
     generated++;
 
-    // Create --also aliases
-    for (const alias of opts.also ?? []) {
+    for (const alias of also) {
       const aliasPath = path.join(targetDir, alias);
       fs.writeFileSync(aliasPath, `@${AGENTS_FILE}\n`);
       log.dim(`  + ${path.relative(projectRoot, aliasPath)} → @${AGENTS_FILE}`);
     }
   }
 
-  // Update root .gitignore with glob patterns for all generated files
   const entries = new Set(getRootGitignoreEntries());
   entries.add(`**/${AGENTS_FILE}`);
-  for (const alias of opts.also ?? []) {
+  for (const alias of also) {
     entries.add(`**/${alias}`);
   }
-  // Remove any plain (non-glob) entries for these files left from old format
-  const toRemove = new Set([AGENTS_FILE, ...(opts.also ?? [])]);
+  const toRemove = new Set([AGENTS_FILE, ...also]);
   const cleaned = [...entries].filter((e) => !toRemove.has(e));
   updateRootGitignore(cleaned.sort());
 

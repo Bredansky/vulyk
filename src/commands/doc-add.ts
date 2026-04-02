@@ -20,7 +20,7 @@ export function docAddCommand(specifier: string, opts: DocAddOptions): void {
       "No targets specified. Use --targets to specify where this doc applies.",
     );
     log.dim(
-      `  Example: vulyk doc-add nicobailon/visual-explainer/docs/usage.md --targets ".claude/skills"`,
+      `  Example: vulyk doc-add nicobailon/visual-explainer/docs/usage.md --targets "src"`,
     );
     process.exit(1);
   }
@@ -33,7 +33,7 @@ export function docAddCommand(specifier: string, opts: DocAddOptions): void {
       ?.replace(/\.md$/, "")
       .replace(/@.*$/, "") ?? specifier;
 
-  manifest.docs[name] = {
+  manifest.docs.entries[name] = {
     source: specifier,
     targets: opts.targets,
     ...(opts.description ? { description: opts.description } : {}),

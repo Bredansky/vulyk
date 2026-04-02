@@ -10,14 +10,14 @@ export function removeCommand(name: string): void {
   }
 
   const manifest = readManifest(manifestPath);
-  if (!manifest.skills[name]) {
+  if (!manifest.skills.entries[name]) {
     log.error(`"${name}" not found`);
     process.exit(1);
   }
 
-  uninstall(name, manifest.paths.skills);
-  const { [name]: _, ...remainingSkills } = manifest.skills;
-  manifest.skills = remainingSkills;
+  uninstall(name, [manifest.skills.path]);
+  const { [name]: _, ...remainingSkills } = manifest.skills.entries;
+  manifest.skills.entries = remainingSkills;
   writeManifest(manifestPath, manifest);
   log.success(`Removed "${name}"`);
 }

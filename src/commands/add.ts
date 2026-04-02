@@ -15,17 +15,17 @@ function addSingle(
   commit: string,
   manifest: Manifest,
 ): void {
-  const installedName = install(specifier, tmpDir, manifest.paths.skills);
+  const installedName = install(specifier, tmpDir, [manifest.skills.path]);
   const pinned = specifier.includes("@")
     ? specifier.replace(/@[^@]+$/, `@${commit}`)
     : `${specifier}@${commit}`;
-  manifest.skills[installedName] = pinned;
+  manifest.skills.entries[installedName] = pinned;
   if (!isEnabled(manifest, installedName)) {
     log.warn(
       `"${installedName}" added but not in enabled whitelist — won't install on sync`,
     );
   }
-  log.success(`Added "${installedName}" → ${manifest.paths.skills.join(", ")}`);
+  log.success(`Added "${installedName}" → ${manifest.skills.path}`);
 }
 
 export function addCommand(specifier: string, opts: { name?: string }): void {
@@ -36,9 +36,9 @@ export function addCommand(specifier: string, opts: { name?: string }): void {
   }
 
   const manifest = readManifest(manifestPath);
-  if (manifest.paths.skills.length === 0) {
-    log.warn("No skill paths configured in vulyk.json.");
-    log.dim(`  Example: "paths": { "skills": [".claude/skills"] }`);
+  if (!manifest.skills.path) {
+    log.warn("No skill path configured in vulyk.json.");
+    log.dim(`  Example: "skills": { "path": "skills" }`);
     process.exit(1);
   }
 

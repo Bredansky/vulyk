@@ -10,8 +10,8 @@ export function listCommand(): void {
   }
 
   const manifest = readManifest(manifestPath);
-  const skills = Object.entries(manifest.skills);
-  const docs = Object.entries(manifest.docs);
+  const skills = Object.entries(manifest.skills.entries);
+  const docs = Object.entries(manifest.docs.entries);
 
   log.blue("\nSkills:");
   if (skills.length === 0) {
@@ -41,16 +41,14 @@ export function listCommand(): void {
   }
 
   log.blue("\nPaths:");
-  const skillPaths = manifest.paths.skills;
-  const docPaths = manifest.paths.docs;
-  if (skillPaths.length === 0 && docPaths.length === 0) {
+  if (!manifest.skills.path && !manifest.docs.path) {
     log.dim("  none");
   } else {
-    if (skillPaths.length > 0) {
-      log.print(`  ${color.dim("skills:")} ${skillPaths.join(", ")}`);
+    if (manifest.skills.path) {
+      log.print(`  ${color.dim("skills:")} ${manifest.skills.path}`);
     }
-    if (docPaths.length > 0) {
-      log.print(`  ${color.dim("docs:")} ${docPaths.join(", ")}`);
+    if (manifest.docs.path) {
+      log.print(`  ${color.dim("docs:")} ${manifest.docs.path}`);
     }
   }
   log.print("");

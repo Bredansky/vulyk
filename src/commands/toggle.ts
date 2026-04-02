@@ -14,20 +14,20 @@ export function enableCommand(name: string): void {
   }
 
   const manifest = readManifest(manifestPath);
-  if (!manifest.skills[name]) {
+  if (!manifest.skills.entries[name]) {
     log.error(`"${name}" not found`);
     process.exit(1);
   }
 
-  if (!manifest.enabled) {
+  if (!manifest.skills.enabled) {
     log.warn(
-      `No whitelist defined — all skills already enabled. Add "enabled": [] to use a whitelist.`,
+      `No whitelist defined — all skills already enabled. Add "skills.enabled": [] to use a whitelist.`,
     );
     return;
   }
 
-  if (!manifest.enabled.includes(name)) {
-    manifest.enabled.push(name);
+  if (!manifest.skills.enabled.includes(name)) {
+    manifest.skills.enabled.push(name);
     writeManifest(manifestPath, manifest);
   }
 
@@ -35,8 +35,8 @@ export function enableCommand(name: string): void {
   if (fs.existsSync(tmpDir)) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
-  fetchSource(parseSource(manifest.skills[name]), tmpDir);
-  install(name, tmpDir, manifest.paths.skills);
+  fetchSource(parseSource(manifest.skills.entries[name]), tmpDir);
+  install(name, tmpDir, [manifest.skills.path]);
   fs.rmSync(tmpDir, { recursive: true, force: true });
   log.success(`Enabled "${name}"`);
 }
@@ -49,16 +49,16 @@ export function disableCommand(name: string): void {
   }
 
   const manifest = readManifest(manifestPath);
-  if (!manifest.skills[name]) {
+  if (!manifest.skills.entries[name]) {
     log.error(`"${name}" not found`);
     process.exit(1);
   }
 
-  manifest.enabled = manifest.enabled
-    ? manifest.enabled.filter((n) => n !== name)
-    : Object.keys(manifest.skills).filter((n) => n !== name);
+  manifest.skills.enabled = manifest.skills.enabled
+    ? manifest.skills.enabled.filter((n) => n !== name)
+    : Object.keys(manifest.skills.entries).filter((n) => n !== name);
 
   writeManifest(manifestPath, manifest);
-  uninstall(name, manifest.paths.skills);
+  uninstall(name, [manifest.skills.path]);
   log.success(`Disabled "${name}"`);
 }

@@ -83,11 +83,11 @@ export function diffCommand(name?: string): void {
   const manifest = readManifest(manifestPath);
 
   const skills = name
-    ? Object.entries(manifest.skills).filter(([n]) => n === name)
-    : Object.entries(manifest.skills);
+    ? Object.entries(manifest.skills.entries).filter(([n]) => n === name)
+    : Object.entries(manifest.skills.entries);
   const docs = name
-    ? Object.entries(manifest.docs).filter(([n]) => n === name)
-    : Object.entries(manifest.docs);
+    ? Object.entries(manifest.docs.entries).filter(([n]) => n === name)
+    : Object.entries(manifest.docs.entries);
 
   if (skills.length === 0 && docs.length === 0) {
     log.warn(name ? `"${name}" not found` : "Nothing to diff");

@@ -8,6 +8,38 @@ import { install, resolvePath } from "../lib/installer.js";
 import { color, log } from "../lib/log.js";
 
 const MARKER = ".vulyk";
+const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+
+function quoteYaml(value: string): string {
+  return JSON.stringify(value);
+}
+
+function buildDocFrontmatter(
+  source: string,
+  targets: string[],
+  description?: string,
+): string {
+  const lines = ["---", "paths:"];
+  for (const target of targets) {
+    lines.push(`  - ${quoteYaml(target)}`);
+  }
+  if (description) {
+    lines.push(`description: ${quoteYaml(description)}`);
+  }
+  lines.push(`source: ${quoteYaml(source)}`);
+  lines.push("---", "");
+  return lines.join("\n");
+}
+
+function normalizeExternalDoc(
+  body: string,
+  source: string,
+  targets: string[],
+  description?: string,
+): string {
+  const normalizedBody = body.replace(FRONTMATTER_RE, "").trimStart();
+  return `${buildDocFrontmatter(source, targets, description)}${normalizedBody}`;
+}
 
 function getRepoCache(repoUrl: string): string {
   return path.join(
@@ -44,11 +76,11 @@ export function updateCommand(name?: string): void {
   const manifest = readManifest(manifestPath);
 
   const skills = name
-    ? Object.entries(manifest.skills).filter(([n]) => n === name)
-    : Object.entries(manifest.skills);
+    ? Object.entries(manifest.skills.entries).filter(([n]) => n === name)
+    : Object.entries(manifest.skills.entries);
   const docs = name
-    ? Object.entries(manifest.docs).filter(([n]) => n === name)
-    : Object.entries(manifest.docs);
+    ? Object.entries(manifest.docs.entries).filter(([n]) => n === name)
+    : Object.entries(manifest.docs.entries);
 
   if (skills.length === 0 && docs.length === 0) {
     log.warn(name ? `"${name}" not found` : "Nothing to update");
@@ -96,9 +128,9 @@ export function updateCommand(name?: string): void {
     try {
       baseResolved.ref = latestCommit;
       fetchSource(baseResolved, tmpDir);
-      install(n, tmpDir, manifest.paths.skills);
+      install(n, tmpDir, [manifest.skills.path]);
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      manifest.skills[n] =
+      manifest.skills.entries[n] =
         `${baseSpecifier.replace(/@.*$/, "")}@${latestCommit}`;
       log.success(n);
       updated++;
@@ -148,19 +180,24 @@ export function updateCommand(name?: string): void {
       fetchSource(baseResolved, tmpDir);
 
       const destDir = resolvePath(
-        path.join(
-          path.dirname(manifestPath),
-          manifest.paths.docs[0] ?? "docs/external",
-        ),
+        path.join(path.dirname(manifestPath), manifest.docs.path),
       );
       fs.mkdirSync(destDir, { recursive: true });
       const mdFile = fs.readdirSync(tmpDir).find((f) => f.endsWith(".md"));
       if (!mdFile) throw new Error("No markdown file found");
-      fs.copyFileSync(path.join(tmpDir, mdFile), path.join(destDir, `${n}.md`));
+
+      const rawBody = fs.readFileSync(path.join(tmpDir, mdFile), "utf8");
+      const normalizedBody = normalizeExternalDoc(
+        rawBody,
+        entry.source,
+        entry.targets,
+        entry.description,
+      );
+      fs.writeFileSync(path.join(destDir, `${n}.md`), normalizedBody);
       fs.writeFileSync(path.join(destDir, MARKER), "");
       fs.rmSync(tmpDir, { recursive: true, force: true });
 
-      manifest.docs[n] = {
+      manifest.docs.entries[n] = {
         ...entry,
         source: `${baseSpecifier.replace(/@.*$/, "")}@${latestCommit}`,
       };
