@@ -10,7 +10,19 @@ const AGENTS_FILE = "AGENTS.md";
 interface DocFile {
   filePath: string;
   paths: string[];
-  content: string;
+  description: string;
+  title: string;
+  relativePath: string;
+}
+
+function parseFrontmatterField(frontmatter: string, field: string): string {
+  const match = new RegExp(`^${field}:\\s*(.+)$`, "m").exec(frontmatter);
+  return match ? match[1].trim().replace(/^["']|["']$/g, "") : "";
+}
+
+function parseTitle(body: string): string {
+  const match = /^#\s+(.+)$/m.exec(body);
+  return match ? match[1].trim() : "";
 }
 
 function parsePaths(frontmatter: string): string[] {
@@ -42,9 +54,11 @@ function scanDocs(docsDir: string): DocFile[] {
         if (!match) continue;
         const paths = parsePaths(match[1]);
         if (paths.length === 0) continue;
-        // Strip frontmatter from content
+        const description = parseFrontmatterField(match[1], "description");
         const body = content.slice(match[0].length).trim();
-        results.push({ filePath: fullPath, paths, content: body });
+        const title = parseTitle(body);
+        const relativePath = path.relative(docsDir, fullPath).replace(/\\/g, "/");
+        results.push({ filePath: fullPath, paths, description, title, relativePath });
       }
     }
   }
@@ -66,32 +80,38 @@ export function docsCommand(opts: { also?: string[] }): void {
   }
 
   // Group docs by target directory
-  const byTarget = new Map<string, string[]>();
+  const byTarget = new Map<string, DocFile[]>();
 
   for (const doc of docs) {
     for (const targetPath of doc.paths) {
       const resolved = resolvePath(path.join(projectRoot, targetPath));
-      // Use the directory of the path (strip glob patterns)
       const targetDir = resolved.includes("*")
         ? resolvePath(path.join(projectRoot, targetPath.split("*")[0].replace(/\/$/, "")))
         : fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
           ? resolved
           : path.dirname(resolved);
 
-      const key = targetDir;
-      if (!byTarget.has(key)) byTarget.set(key, []);
-      byTarget.get(key)!.push(doc.content);
+      if (!byTarget.has(targetDir)) byTarget.set(targetDir, []);
+      byTarget.get(targetDir)!.push(doc);
     }
   }
 
   let generated = 0;
 
-  for (const [targetDir, contents] of byTarget) {
+  for (const [targetDir, docFiles] of byTarget) {
     fs.mkdirSync(targetDir, { recursive: true });
 
+    const sections = docFiles.map((doc) => {
+      const docPath = path.relative(projectRoot, doc.filePath).replace(/\\/g, "/");
+      const lines: string[] = [];
+      if (doc.title) lines.push(`# ${doc.title}`);
+      if (doc.description) lines.push(`\n${doc.description}`);
+      lines.push(`\n@${docPath}`);
+      return lines.join("");
+    });
+
     const agentsPath = path.join(targetDir, AGENTS_FILE);
-    const merged = contents.join("\n\n---\n\n");
-    fs.writeFileSync(agentsPath, `${merged}\n`);
+    fs.writeFileSync(agentsPath, `${sections.join("\n\n---\n\n")}\n`);
 
     const rel = path.relative(projectRoot, agentsPath);
     log.success(`Generated ${rel}`);
