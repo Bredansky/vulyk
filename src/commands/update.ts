@@ -57,6 +57,8 @@ export function updateCommand(name?: string): void {
 
   let updated = 0;
 
+  if (skills.length > 0) log.print(color.dim("\nSkills:"));
+
   for (const [n, specifier] of skills) {
     const resolved = parseSource(specifier);
     const repoCache = getRepoCache(resolved.repoUrl);
@@ -105,6 +107,8 @@ export function updateCommand(name?: string): void {
     }
   }
 
+  if (docs.length > 0) log.print(color.dim("\nDocs:"));
+
   for (const [n, entry] of docs) {
     const resolved = parseSource(entry.source);
     const repoCache = getRepoCache(resolved.repoUrl);
@@ -115,7 +119,7 @@ export function updateCommand(name?: string): void {
     try {
       latestCommit = fetchLatest(repoCache, baseResolved.ref);
     } catch {
-      log.error(`Could not resolve ref for doc "${n}"`);
+      log.error(`Could not resolve ref for "${n}"`);
       continue;
     }
 
@@ -124,14 +128,14 @@ export function updateCommand(name?: string): void {
       : null;
     if (currentCommit && latestCommit === currentCommit) {
       log.print(
-        `  ${color.dim(`doc:${n} already up to date (${latestCommit.slice(0, 7)})`)}`,
+        `  ${color.dim(`${n} already up to date (${latestCommit.slice(0, 7)})`)}`,
       );
       continue;
     }
 
     const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
     log.print(
-      `  ${color.blue(`doc:${n}`)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
+      `  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
     );
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", `doc-${n}`);
@@ -160,7 +164,7 @@ export function updateCommand(name?: string): void {
         ...entry,
         source: `${baseSpecifier.replace(/@.*$/, "")}@${latestCommit}`,
       };
-      log.success(`doc:${n}`);
+      log.success(n);
       updated++;
     } catch (err) {
       log.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);

@@ -96,83 +96,89 @@ export function diffCommand(name?: string): void {
 
   let hasUpdates = false;
 
-  for (const [n, specifier] of skills) {
-    const resolved = parseSource(specifier);
-    const repoCache = getRepoCache(resolved.repoUrl);
-    const baseResolved = parseSource(specifier.replace(/@[0-9a-f]{7,}$/, ""));
+  if (skills.length > 0) {
+    log.print(color.dim("\nSkills:"));
+    for (const [n, specifier] of skills) {
+      const resolved = parseSource(specifier);
+      const repoCache = getRepoCache(resolved.repoUrl);
+      const baseResolved = parseSource(specifier.replace(/@[0-9a-f]{7,}$/, ""));
 
-    let latestCommit: string;
-    try {
-      latestCommit = fetchLatest(repoCache, baseResolved.ref);
-    } catch {
-      log.error(`Could not resolve ref for "${n}"`);
-      continue;
-    }
+      let latestCommit: string;
+      try {
+        latestCommit = fetchLatest(repoCache, baseResolved.ref);
+      } catch {
+        log.error(`Could not resolve ref for "${n}"`);
+        continue;
+      }
 
-    const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
-      ? resolved.ref
-      : null;
-    if (currentCommit && latestCommit === currentCommit) {
+      const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
+        ? resolved.ref
+        : null;
+      if (currentCommit && latestCommit === currentCommit) {
+        log.print(
+          `  ${color.dim(`${n} up to date (${latestCommit.slice(0, 7)})`)}`,
+        );
+        continue;
+      }
+
+      hasUpdates = true;
+      const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
       log.print(
-        `  ${color.dim(`${n} up to date (${latestCommit.slice(0, 7)})`)}`,
+        `  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
       );
-      continue;
-    }
-
-    hasUpdates = true;
-    const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
-    log.print(
-      `\n  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
-    );
-    if (currentCommit) {
-      showDiff(
-        repoCache,
-        currentCommit,
-        latestCommit,
-        baseResolved.subPath,
-        false,
-      );
+      if (currentCommit) {
+        showDiff(
+          repoCache,
+          currentCommit,
+          latestCommit,
+          baseResolved.subPath,
+          false,
+        );
+      }
     }
   }
 
-  for (const [n, entry] of docs) {
-    const resolved = parseSource(entry.source);
-    const repoCache = getRepoCache(resolved.repoUrl);
-    const baseResolved = parseSource(
-      entry.source.replace(/@[0-9a-f]{7,}$/, ""),
-    );
+  if (docs.length > 0) {
+    log.print(color.dim("\nDocs:"));
+    for (const [n, entry] of docs) {
+      const resolved = parseSource(entry.source);
+      const repoCache = getRepoCache(resolved.repoUrl);
+      const baseResolved = parseSource(
+        entry.source.replace(/@[0-9a-f]{7,}$/, ""),
+      );
 
-    let latestCommit: string;
-    try {
-      latestCommit = fetchLatest(repoCache, baseResolved.ref);
-    } catch {
-      log.error(`Could not resolve ref for doc "${n}"`);
-      continue;
-    }
+      let latestCommit: string;
+      try {
+        latestCommit = fetchLatest(repoCache, baseResolved.ref);
+      } catch {
+        log.error(`Could not resolve ref for "${n}"`);
+        continue;
+      }
 
-    const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
-      ? resolved.ref
-      : null;
-    if (currentCommit && latestCommit === currentCommit) {
+      const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
+        ? resolved.ref
+        : null;
+      if (currentCommit && latestCommit === currentCommit) {
+        log.print(
+          `  ${color.dim(`${n} up to date (${latestCommit.slice(0, 7)})`)}`,
+        );
+        continue;
+      }
+
+      hasUpdates = true;
+      const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
       log.print(
-        `  ${color.dim(`doc:${n} up to date (${latestCommit.slice(0, 7)})`)}`,
+        `  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
       );
-      continue;
-    }
-
-    hasUpdates = true;
-    const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
-    log.print(
-      `\n  ${color.blue(`doc:${n}`)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
-    );
-    if (currentCommit) {
-      showDiff(
-        repoCache,
-        currentCommit,
-        latestCommit,
-        baseResolved.subPath,
-        true,
-      );
+      if (currentCommit) {
+        showDiff(
+          repoCache,
+          currentCommit,
+          latestCommit,
+          baseResolved.subPath,
+          true,
+        );
+      }
     }
   }
 

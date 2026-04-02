@@ -1,5 +1,5 @@
 {
-  "extends": "./node_modules/zirka/typescript/base.json",
+  "extends": "zirka/typescript",
   "compilerOptions": {
     "target": "ESNext",
     "module": "NodeNext",

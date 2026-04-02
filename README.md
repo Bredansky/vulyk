@@ -65,11 +65,10 @@ Lists installed skills and their pinned versions.
 Shows what would change if you ran `update`. Nothing is modified.
 
 ```
+Skills:
   visual-explainer 9a97a58 → 3f2c1a0
     SKILL.md | 3 ++-
     2 files changed, 3 insertions(+), 1 deletion(-)
-
-  doc:project-structure up to date (c66ea06)
 ```
 
 ### `vulyk update [name]`
@@ -83,10 +82,9 @@ vulyk update visual-explainer  # update one skill
 
 ### `vulyk sync`
 
-Reinstalls all enabled skills from `vulyk.json`. Run this after cloning a repo.
+The `npm install` for skills — restores everything from `vulyk.json`. Run it after cloning, switching branches, or pulling changes that added new skills.
 
 ```sh
-git clone ...
 vulyk sync
 ```
 
