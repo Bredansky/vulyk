@@ -21,16 +21,19 @@ export interface ResolvedSource {
 export function parseSource(specifier: string): ResolvedSource {
   // Full GitHub tree/blob URL
   if (specifier.startsWith("https://github.com/")) {
-    const url = new URL(specifier);
+    const atIdx = specifier.lastIndexOf("@");
+    const pinnedRef = atIdx > specifier.indexOf(".com/") ? specifier.slice(atIdx + 1) : null;
+    const cleanSpecifier = pinnedRef ? specifier.slice(0, atIdx) : specifier;
+    const url = new URL(cleanSpecifier);
     const parts = url.pathname.split("/").filter(Boolean);
     const repoUrl = `https://github.com/${parts[0]}/${parts[1]}.git`;
     if (parts.length > 4) {
       let subPath = parts.slice(4).join("/");
       if (subPath.endsWith("/SKILL.md")) subPath = subPath.slice(0, -"/SKILL.md".length);
       else if (subPath === "SKILL.md") subPath = "";
-      return { repoUrl, subPath: subPath || null, ref: parts[3] };
+      return { repoUrl, subPath: subPath || null, ref: pinnedRef ?? parts[3] };
     }
-    return { repoUrl, subPath: null, ref: "HEAD" };
+    return { repoUrl, subPath: null, ref: pinnedRef ?? "HEAD" };
   }
 
   // Raw git URL

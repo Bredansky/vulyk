@@ -13,61 +13,49 @@ function getRepoCache(repoUrl: string): string {
   return path.join(os.homedir(), ".vulyk", "cache", Buffer.from(repoUrl).toString("base64url").slice(0, 32));
 }
 
-export function updateCommand(name?: string): void {
+function fetchLatest(repoCache: string, ref: string): string {
+  try {
+    if (fs.existsSync(repoCache)) {
+      execSync(`git --git-dir="${repoCache}" fetch --all --tags`, { stdio: "pipe" });
+    }
+  } catch { /* use cached */ }
+  return execSync(`git --git-dir="${repoCache}" rev-parse "${ref}"`, { encoding: "utf8", stdio: "pipe" }).trim();
+}
+
+export async function updateCommand(name?: string): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) { log.error("No vulyk.json found."); process.exit(1); }
 
   const manifest = readManifest(manifestPath);
 
-  const skillsToUpdate = name
-    ? Object.entries(manifest.skills).filter(([n]) => n === name)
-    : Object.entries(manifest.skills);
+  const skills = name ? Object.entries(manifest.skills).filter(([n]) => n === name) : Object.entries(manifest.skills);
+  const docs = name ? Object.entries(manifest.docs).filter(([n]) => n === name) : Object.entries(manifest.docs);
 
-  const docsToUpdate = name
-    ? Object.entries(manifest.docs).filter(([n]) => n === name)
-    : Object.entries(manifest.docs);
-
-  if (skillsToUpdate.length === 0 && docsToUpdate.length === 0) {
+  if (skills.length === 0 && docs.length === 0) {
     log.warn(name ? `"${name}" not found` : "Nothing to update");
     return;
   }
 
   let updated = 0;
-  let upToDate = 0;
 
-  // Update skills
-  for (const [n, specifier] of skillsToUpdate) {
+  for (const [n, specifier] of skills) {
     const resolved = parseSource(specifier);
     const repoCache = getRepoCache(resolved.repoUrl);
     const baseSpecifier = specifier.replace(/@[0-9a-f]{7,}$/, "");
     const baseResolved = parseSource(baseSpecifier);
 
-    try {
-      if (fs.existsSync(repoCache)) {
-        execSync(`git --git-dir="${repoCache}" fetch --all --tags`, { stdio: "pipe" });
-      }
-    } catch { /* use cached */ }
-
     let latestCommit: string;
-    try {
-      latestCommit = execSync(
-        `git --git-dir="${repoCache}" rev-parse "${baseResolved.ref}"`,
-        { encoding: "utf8", stdio: "pipe" }
-      ).trim();
-    } catch {
-      log.error(`Could not resolve ref for "${n}"`);
-      continue;
-    }
+    try { latestCommit = fetchLatest(repoCache, baseResolved.ref); }
+    catch { log.error(`Could not resolve ref for "${n}"`); continue; }
 
     const currentCommit = resolved.ref.match(/^[0-9a-f]{7,}$/) ? resolved.ref : null;
-    if (currentCommit && latestCommit.startsWith(currentCommit)) {
+    if (currentCommit && latestCommit === currentCommit) {
       console.log(`  ${color.dim(`${n} already up to date (${latestCommit.slice(0, 7)})`)}`);
-      upToDate++;
       continue;
     }
 
     const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
-    console.log(`  updating ${n} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}...`);
+    console.log(`  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`);
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", n);
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -85,39 +73,24 @@ export function updateCommand(name?: string): void {
     }
   }
 
-  // Update external docs
-  for (const [n, entry] of docsToUpdate) {
+  for (const [n, entry] of docs) {
     const resolved = parseSource(entry.source);
     const repoCache = getRepoCache(resolved.repoUrl);
     const baseSpecifier = entry.source.replace(/@[0-9a-f]{7,}$/, "");
     const baseResolved = parseSource(baseSpecifier);
 
-    try {
-      if (fs.existsSync(repoCache)) {
-        execSync(`git --git-dir="${repoCache}" fetch --all --tags`, { stdio: "pipe" });
-      }
-    } catch { /* use cached */ }
-
     let latestCommit: string;
-    try {
-      latestCommit = execSync(
-        `git --git-dir="${repoCache}" rev-parse "${baseResolved.ref}"`,
-        { encoding: "utf8", stdio: "pipe" }
-      ).trim();
-    } catch {
-      log.error(`Could not resolve ref for doc "${n}"`);
-      continue;
-    }
+    try { latestCommit = fetchLatest(repoCache, baseResolved.ref); }
+    catch { log.error(`Could not resolve ref for doc "${n}"`); continue; }
 
     const currentCommit = resolved.ref.match(/^[0-9a-f]{7,}$/) ? resolved.ref : null;
-    if (currentCommit && latestCommit.startsWith(currentCommit)) {
+    if (currentCommit && latestCommit === currentCommit) {
       console.log(`  ${color.dim(`doc:${n} already up to date (${latestCommit.slice(0, 7)})`)}`);
-      upToDate++;
       continue;
     }
 
     const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
-    console.log(`  updating doc:${n} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}...`);
+    console.log(`  ${color.blue(`doc:${n}`)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`);
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", `doc-${n}`);
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -126,11 +99,9 @@ export function updateCommand(name?: string): void {
       baseResolved.ref = latestCommit;
       fetchSource(baseResolved, tmpDir);
 
-      const docPaths = manifest.paths.docs;
-      const destDir = resolvePath(path.join(path.dirname(manifestPath), docPaths[0] ?? "docs/external"));
+      const destDir = resolvePath(path.join(path.dirname(manifestPath), manifest.paths.docs[0] ?? "docs/external"));
       fs.mkdirSync(destDir, { recursive: true });
-      const files = fs.readdirSync(tmpDir);
-      const mdFile = files.find((f) => f.endsWith(".md"));
+      const mdFile = fs.readdirSync(tmpDir).find((f) => f.endsWith(".md"));
       if (!mdFile) throw new Error("No markdown file found");
       fs.copyFileSync(path.join(tmpDir, mdFile), path.join(destDir, `${n}.md`));
       fs.writeFileSync(path.join(destDir, MARKER), "");
@@ -145,8 +116,6 @@ export function updateCommand(name?: string): void {
   }
 
   if (updated > 0) writeManifest(manifestPath, manifest);
-
   console.log("");
   if (updated > 0) log.success(`Updated ${String(updated)} item(s)`);
-  if (upToDate > 0) log.dim(`${String(upToDate)} already up to date`);
 }

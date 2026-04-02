@@ -7,6 +7,7 @@ import { enableCommand, disableCommand } from "./commands/toggle.js";
 import { listCommand } from "./commands/list.js";
 import { syncCommand } from "./commands/sync.js";
 import { updateCommand } from "./commands/update.js";
+import { diffCommand } from "./commands/diff.js";
 import { docsCommand } from "./commands/docs.js";
 import { docAddCommand } from "./commands/doc-add.js";
 
@@ -50,9 +51,14 @@ program
   .action(listCommand);
 
 program
+  .command("diff [name]")
+  .description("Show what would change on update")
+  .action((name) => diffCommand(name));
+
+program
   .command("update [name]")
-  .description("Update a skill to latest, or all if no name given")
-  .action(updateCommand);
+  .description("Update skills/docs to latest")
+  .action((name) => updateCommand(name));
 
 program
   .command("doc-add <specifier>")
