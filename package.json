@@ -6,6 +6,7 @@
   "license": "MIT",
   "author": "bredansky",
   "type": "module",
+  "files": ["dist", "src"],
   "bin": {
     "vulyk": "./dist/index.js"
   },

@@ -7,6 +7,7 @@ import { enableCommand, disableCommand } from "./commands/toggle.js";
 import { listCommand } from "./commands/list.js";
 import { syncCommand } from "./commands/sync.js";
 import { updateCommand } from "./commands/update.js";
+import { docsCommand } from "./commands/docs.js";
 
 const program = new Command();
 
@@ -51,6 +52,12 @@ program
   .command("update [name]")
   .description("Update a skill to latest, or all if no name given")
   .action(updateCommand);
+
+program
+  .command("docs")
+  .description("Generate AGENTS.md files from docs/ folder")
+  .option("--also <filenames...>", "also create these files importing AGENTS.md")
+  .action((opts) => docsCommand({ also: opts.also }));
 
 program
   .command("sync")
