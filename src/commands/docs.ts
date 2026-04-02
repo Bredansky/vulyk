@@ -106,7 +106,7 @@ export function docsCommand(opts: { also?: string[] }): void {
       const lines: string[] = [];
       if (doc.title) lines.push(`# ${doc.title}`);
       if (doc.description) lines.push(`\n${doc.description}`);
-      lines.push(`\n@${docPath}`);
+      lines.push(`\nFull documentation: docs/${doc.relativePath}`);
       return lines.join("");
     });
 
