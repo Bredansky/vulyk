@@ -18,7 +18,7 @@
     "src"
   ],
   "bin": {
-    "vulyk": "./dist/index.js"
+    "vulyk": "dist/index.js"
   },
   "scripts": {
     "build": "tsup",
