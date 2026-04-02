@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { findManifest } from "../lib/manifest.js";
+import { updateGitignore, getGitignoreEntries } from "../lib/gitignore.js";
 import { log, color } from "../lib/log.js";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
@@ -117,12 +118,19 @@ export function docsCommand(opts: { also?: string[] }): void {
     log.success(`Generated ${rel}`);
     generated++;
 
+    // Update .gitignore
+    const gitignoreEntries = new Set(getGitignoreEntries(targetDir));
+    gitignoreEntries.add(AGENTS_FILE);
+
     // Create --also aliases
     for (const alias of opts.also ?? []) {
       const aliasPath = path.join(targetDir, alias);
       fs.writeFileSync(aliasPath, `@${AGENTS_FILE}\n`);
       log.dim(`  + ${path.relative(projectRoot, aliasPath)} → @${AGENTS_FILE}`);
+      gitignoreEntries.add(alias);
     }
+
+    updateGitignore(targetDir, [...gitignoreEntries].sort());
   }
 
   console.log("");

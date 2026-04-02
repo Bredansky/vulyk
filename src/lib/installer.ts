@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { updateGitignore, getGitignoreEntries } from "./gitignore.js";
 
 export function resolvePath(p: string): string {
   return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : path.resolve(p);
@@ -31,18 +32,27 @@ const MARKER = ".vulyk";
 export function install(packageName: string, srcDir: string, targetPaths: string[]): string {
   const installName = readSkillName(srcDir) ?? packageName;
   for (const targetPath of targetPaths) {
-    const dest = path.join(resolvePath(targetPath), installName);
+    const resolved = resolvePath(targetPath);
+    const dest = path.join(resolved, installName);
     if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
     copyDir(srcDir, dest);
     fs.writeFileSync(path.join(dest, MARKER), "");
+    // Add to .gitignore
+    const entries = new Set(getGitignoreEntries(resolved));
+    entries.add(`${installName}/`);
+    updateGitignore(resolved, [...entries].sort());
   }
   return installName;
 }
 
 export function uninstall(name: string, targetPaths: string[]): void {
   for (const targetPath of targetPaths) {
-    const dest = path.join(resolvePath(targetPath), name);
+    const resolved = resolvePath(targetPath);
+    const dest = path.join(resolved, name);
     if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
+    // Remove from .gitignore
+    const entries = getGitignoreEntries(resolved).filter((e) => e !== `${name}/`);
+    updateGitignore(resolved, entries);
   }
 }
 
