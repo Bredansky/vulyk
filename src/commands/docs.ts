@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { findManifest } from "../lib/manifest.js";
+import { findManifest, readManifest } from "../lib/manifest.js";
 import { updateRootGitignore, getRootGitignoreEntries } from "../lib/gitignore.js";
 import { log, color } from "../lib/log.js";
 
@@ -71,9 +71,14 @@ function scanDocs(docsDir: string): DocFile[] {
 export function docsCommand(opts: { also?: string[] }): void {
   const manifestPath = findManifest();
   const projectRoot = manifestPath ? path.dirname(manifestPath) : process.cwd();
+  const manifest = manifestPath ? readManifest(manifestPath) : null;
   const docsDir = path.join(projectRoot, "docs");
 
-  const docs = scanDocs(docsDir);
+  // Scan both local docs/ and external docs/
+  const localDocs = scanDocs(docsDir);
+  const externalDocsDir = path.join(projectRoot, manifest?.paths.docs[0] ?? "docs/external");
+  const externalDocs = scanDocs(externalDocsDir);
+  const docs = [...localDocs, ...externalDocs];
 
   if (docs.length === 0) {
     log.warn(`No docs with "paths" frontmatter found in ${docsDir}`);

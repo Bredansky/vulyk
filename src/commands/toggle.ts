@@ -26,7 +26,7 @@ export function enableCommand(name: string): void {
   const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
   if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
   fetchSource(parseSource(manifest.skills[name]), tmpDir);
-  install(name, tmpDir, manifest.paths);
+  install(name, tmpDir, manifest.paths.skills);
   fs.rmSync(tmpDir, { recursive: true, force: true });
   log.success(`Enabled "${name}"`);
 }
@@ -43,6 +43,6 @@ export function disableCommand(name: string): void {
     : Object.keys(manifest.skills).filter((n) => n !== name);
 
   writeManifest(manifestPath, manifest);
-  uninstall(name, manifest.paths);
+  uninstall(name, manifest.paths.skills);
   log.success(`Disabled "${name}"`);
 }

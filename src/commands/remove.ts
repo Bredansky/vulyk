@@ -9,7 +9,7 @@ export function removeCommand(name: string): void {
   const manifest = readManifest(manifestPath);
   if (!manifest.skills[name]) { log.error(`"${name}" not found`); process.exit(1); }
 
-  uninstall(name, manifest.paths);
+  uninstall(name, manifest.paths.skills);
   delete manifest.skills[name];
   writeManifest(manifestPath, manifest);
   log.success(`Removed "${name}"`);

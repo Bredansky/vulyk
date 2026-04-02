@@ -8,6 +8,7 @@ import { listCommand } from "./commands/list.js";
 import { syncCommand } from "./commands/sync.js";
 import { updateCommand } from "./commands/update.js";
 import { docsCommand } from "./commands/docs.js";
+import { docAddCommand } from "./commands/doc-add.js";
 
 const program = new Command();
 
@@ -52,6 +53,13 @@ program
   .command("update [name]")
   .description("Update a skill to latest, or all if no name given")
   .action(updateCommand);
+
+program
+  .command("doc-add <specifier>")
+  .description("Add an external doc from a remote source")
+  .option("-t, --targets <paths...>", "target paths this doc applies to")
+  .option("-d, --description <desc>", "description for AGENTS.md")
+  .action((specifier, opts) => docAddCommand(specifier, { targets: opts.targets ?? [], description: opts.description }));
 
 program
   .command("docs")

@@ -9,13 +9,8 @@ import { isEnabled } from "../lib/whitelist.js";
 import { type Manifest } from "../types.js";
 import { log } from "../lib/log.js";
 
-function addSingle(
-  specifier: string,
-  tmpDir: string,
-  commit: string,
-  manifest: Manifest
-): void {
-  const installedName = install(specifier, tmpDir, manifest.paths);
+function addSingle(specifier: string, tmpDir: string, commit: string, manifest: Manifest): void {
+  const installedName = install(specifier, tmpDir, manifest.paths.skills);
   const pinned = specifier.includes("@")
     ? specifier.replace(/@[^@]+$/, `@${commit}`)
     : `${specifier}@${commit}`;
@@ -23,7 +18,7 @@ function addSingle(
   if (!isEnabled(manifest, installedName)) {
     log.warn(`"${installedName}" added but not in enabled whitelist — won't install on sync`);
   }
-  log.success(`Added "${installedName}" → ${manifest.paths.join(", ")}`);
+  log.success(`Added "${installedName}" → ${manifest.paths.skills.join(", ")}`);
 }
 
 export function addCommand(specifier: string, opts: { name?: string }): void {
@@ -31,9 +26,9 @@ export function addCommand(specifier: string, opts: { name?: string }): void {
   if (!manifestPath) { log.error("No vulyk.json found. Run `vulyk init` first."); process.exit(1); }
 
   const manifest = readManifest(manifestPath);
-  if (manifest.paths.length === 0) {
-    log.warn("No paths configured in vulyk.json.");
-    log.dim(`  Example: "paths": [".claude/skills", ".opencode/skills"]`);
+  if (manifest.paths.skills.length === 0) {
+    log.warn("No skill paths configured in vulyk.json.");
+    log.dim(`  Example: "paths": { "skills": [".claude/skills"] }`);
     process.exit(1);
   }
 

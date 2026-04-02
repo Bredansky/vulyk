@@ -8,6 +8,7 @@ export function listCommand(): void {
 
   const manifest = readManifest(manifestPath);
   const skills = Object.entries(manifest.skills);
+  const docs = Object.entries(manifest.docs);
 
   log.blue("\nSkills:");
   if (skills.length === 0) {
@@ -21,11 +22,23 @@ export function listCommand(): void {
     }
   }
 
+  if (docs.length > 0) {
+    log.blue("\nExternal Docs:");
+    for (const [name, entry] of docs) {
+      const atIdx = entry.source.lastIndexOf("@");
+      const version = atIdx > 0 ? color.dim(entry.source.slice(atIdx)) : color.dim("@HEAD");
+      console.log(`  ${color.green("✓")} ${name} ${version} ${color.dim(`→ ${entry.targets.join(", ")}`)}`);
+    }
+  }
+
   log.blue("\nPaths:");
-  if (manifest.paths.length === 0) {
+  const skillPaths = manifest.paths.skills;
+  const docPaths = manifest.paths.docs;
+  if (skillPaths.length === 0 && docPaths.length === 0) {
     log.dim("  none");
   } else {
-    for (const p of manifest.paths) console.log(`  ${color.dim(p)}`);
+    if (skillPaths.length > 0) console.log(`  ${color.dim("skills:")} ${skillPaths.join(", ")}`);
+    if (docPaths.length > 0) console.log(`  ${color.dim("docs:")} ${docPaths.join(", ")}`);
   }
   console.log("");
 }
