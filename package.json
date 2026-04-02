@@ -21,7 +21,8 @@
     "vulyk": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsup",
+    "typecheck": "tsc",
     "dev": "tsx src/index.ts",
     "fix": "eslint . --fix --cache",
     "lint": "eslint . --cache",
@@ -40,6 +41,7 @@
     "@types/node": "^22.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "zirka": "^0.0.27"
