@@ -2,10 +2,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { findManifest, readManifest } from "../lib/manifest.js";
-import { updateRootGitignore, getRootGitignoreEntries } from "../lib/gitignore.js";
-import { log, color } from "../lib/log.js";
+import {
+  updateRootGitignore,
+  getRootGitignoreEntries,
+} from "../lib/gitignore.js";
+import { log } from "../lib/log.js";
 
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
+const FRONTMATTER_RE = /^---\r?\n(?<fm>[\s\S]*?)\r?\n---/;
 const AGENTS_FILE = "AGENTS.md";
 
 interface DocFile {
@@ -17,26 +20,28 @@ interface DocFile {
 }
 
 function parseFrontmatterField(frontmatter: string, field: string): string {
-  const match = new RegExp(`^${field}:\\s*(.+)$`, "m").exec(frontmatter);
-  return match ? match[1].trim().replace(/^["']|["']$/g, "") : "";
+  const match = new RegExp(`^${field}:\\s*(?<val>.+)$`, "m").exec(frontmatter);
+  return match?.groups?.val?.trim().replace(/^["']|["']$/g, "") ?? "";
 }
 
 function parseTitle(body: string): string {
-  const match = /^#\s+(.+)$/m.exec(body);
-  return match ? match[1].trim() : "";
+  const match = /^# (?<title>.+)$/m.exec(body);
+  return match?.groups?.title?.trim() ?? "";
 }
 
 function parsePaths(frontmatter: string): string[] {
-  const match = /^paths:\s*\n((?:\s+-\s+.+\n?)+)/m.exec(frontmatter);
+  const match = /^paths:\s*\n(?<items>(?:\s+-\s+.+\n?)+)/m.exec(frontmatter);
   if (!match) return [];
-  return match[1]
+  return (match.groups?.items ?? "")
     .split("\n")
     .map((l) => l.replace(/^\s+-\s+["']?|["']?\s*$/g, "").trim())
     .filter(Boolean);
 }
 
 function resolvePath(p: string): string {
-  return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : path.resolve(p);
+  return p.startsWith("~")
+    ? path.join(os.homedir(), p.slice(1))
+    : path.resolve(p);
 }
 
 function scanDocs(docsDir: string): DocFile[] {
@@ -53,19 +58,34 @@ function scanDocs(docsDir: string): DocFile[] {
         const content = fs.readFileSync(fullPath, "utf8");
         const match = FRONTMATTER_RE.exec(content);
         if (!match) continue;
-        const paths = parsePaths(match[1]);
+        const fm = match.groups?.fm ?? "";
+        const paths = parsePaths(fm);
         if (paths.length === 0) continue;
-        const description = parseFrontmatterField(match[1], "description");
+        const description = parseFrontmatterField(fm, "description");
         const body = content.slice(match[0].length).trim();
         const title = parseTitle(body);
-        const relativePath = path.relative(docsDir, fullPath).replace(/\\/g, "/");
-        results.push({ filePath: fullPath, paths, description, title, relativePath });
+        const relativePath = path
+          .relative(docsDir, fullPath)
+          .replace(/\\/g, "/");
+        results.push({
+          filePath: fullPath,
+          paths,
+          description,
+          title,
+          relativePath,
+        });
       }
     }
   }
 
   walk(docsDir);
   return results;
+}
+
+function getTargetDir(resolved: string): string {
+  return fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
+    ? resolved
+    : path.dirname(resolved);
 }
 
 export function docsCommand(opts: { also?: string[] }): void {
@@ -76,7 +96,10 @@ export function docsCommand(opts: { also?: string[] }): void {
 
   // Scan both local docs/ and external docs/
   const localDocs = scanDocs(docsDir);
-  const externalDocsDir = path.join(projectRoot, manifest?.paths.docs[0] ?? "docs/external");
+  const externalDocsDir = path.join(
+    projectRoot,
+    manifest?.paths.docs[0] ?? "docs/external",
+  );
   const externalDocs = scanDocs(externalDocsDir);
   const docs = [...localDocs, ...externalDocs];
 
@@ -92,30 +115,36 @@ export function docsCommand(opts: { also?: string[] }): void {
     for (const targetPath of doc.paths) {
       const resolved = resolvePath(path.join(projectRoot, targetPath));
       const targetDir = resolved.includes("*")
-        ? resolvePath(path.join(projectRoot, targetPath.split("*")[0].replace(/\/$/, "")))
-        : fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
-          ? resolved
-          : path.dirname(resolved);
+        ? resolvePath(
+            path.join(
+              projectRoot,
+              (targetPath.split("*")[0] ?? "").replace(/\/$/, ""),
+            ),
+          )
+        : getTargetDir(resolved);
 
       if (!byTarget.has(targetDir)) byTarget.set(targetDir, []);
-      byTarget.get(targetDir)!.push(doc);
+      byTarget.get(targetDir)?.push(doc);
     }
   }
 
   // Also include external docs from vulyk.json manifest
   if (manifest) {
     for (const [name, entry] of Object.entries(manifest.docs)) {
-      const externalFile = path.join(projectRoot, manifest.paths.docs[0] ?? "docs/external", `${name}.md`);
+      const externalFile = path.join(
+        projectRoot,
+        manifest.paths.docs[0] ?? "docs/external",
+        `${name}.md`,
+      );
       if (!fs.existsSync(externalFile)) continue;
       const body = fs.readFileSync(externalFile, "utf8");
       const title = parseTitle(body);
       for (const targetPath of entry.targets) {
-        const resolved = resolvePath(path.join(projectRoot, targetPath));
-        const targetDir = fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
-          ? resolved
-          : path.dirname(resolved);
+        const targetDir = getTargetDir(
+          resolvePath(path.join(projectRoot, targetPath)),
+        );
         if (!byTarget.has(targetDir)) byTarget.set(targetDir, []);
-        byTarget.get(targetDir)!.push({
+        byTarget.get(targetDir)?.push({
           filePath: externalFile,
           paths: entry.targets,
           description: entry.description ?? "",
@@ -132,7 +161,6 @@ export function docsCommand(opts: { also?: string[] }): void {
     fs.mkdirSync(targetDir, { recursive: true });
 
     const sections = docFiles.map((doc) => {
-      const docPath = path.relative(projectRoot, doc.filePath).replace(/\\/g, "/");
       const lines: string[] = [];
       if (doc.title) lines.push(`# ${doc.title}`);
       if (doc.description) lines.push(`\n${doc.description}`);
@@ -166,6 +194,6 @@ export function docsCommand(opts: { also?: string[] }): void {
   const cleaned = [...entries].filter((e) => !toRemove.has(e));
   updateRootGitignore(cleaned.sort());
 
-  console.log("");
+  log.print("");
   log.success(`Generated ${String(generated)} AGENTS.md file(s)`);
 }

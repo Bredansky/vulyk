@@ -4,7 +4,10 @@ import { color, log } from "../lib/log.js";
 
 export function listCommand(): void {
   const manifestPath = findManifest();
-  if (!manifestPath) { log.error("No vulyk.json found."); process.exit(1); }
+  if (!manifestPath) {
+    log.error("No vulyk.json found.");
+    process.exit(1);
+  }
 
   const manifest = readManifest(manifestPath);
   const skills = Object.entries(manifest.skills);
@@ -15,10 +18,13 @@ export function listCommand(): void {
     log.dim("  none");
   } else {
     for (const [name, specifier] of skills) {
-      const status = isEnabled(manifest, name) ? color.green("✓") : color.red("✗");
+      const status = isEnabled(manifest, name)
+        ? color.green("✓")
+        : color.red("✗");
       const atIdx = specifier.lastIndexOf("@");
-      const version = atIdx > 0 ? color.dim(specifier.slice(atIdx)) : color.dim("@HEAD");
-      console.log(`  ${status} ${name} ${version}`);
+      const version =
+        atIdx > 0 ? color.dim(specifier.slice(atIdx)) : color.dim("@HEAD");
+      log.print(`  ${status} ${name} ${version}`);
     }
   }
 
@@ -26,8 +32,11 @@ export function listCommand(): void {
     log.blue("\nExternal Docs:");
     for (const [name, entry] of docs) {
       const atIdx = entry.source.lastIndexOf("@");
-      const version = atIdx > 0 ? color.dim(entry.source.slice(atIdx)) : color.dim("@HEAD");
-      console.log(`  ${color.green("✓")} ${name} ${version} ${color.dim(`→ ${entry.targets.join(", ")}`)}`);
+      const version =
+        atIdx > 0 ? color.dim(entry.source.slice(atIdx)) : color.dim("@HEAD");
+      log.print(
+        `  ${color.green("✓")} ${name} ${version} ${color.dim(`→ ${entry.targets.join(", ")}`)}`,
+      );
     }
   }
 
@@ -37,8 +46,12 @@ export function listCommand(): void {
   if (skillPaths.length === 0 && docPaths.length === 0) {
     log.dim("  none");
   } else {
-    if (skillPaths.length > 0) console.log(`  ${color.dim("skills:")} ${skillPaths.join(", ")}`);
-    if (docPaths.length > 0) console.log(`  ${color.dim("docs:")} ${docPaths.join(", ")}`);
+    if (skillPaths.length > 0) {
+      log.print(`  ${color.dim("skills:")} ${skillPaths.join(", ")}`);
+    }
+    if (docPaths.length > 0) {
+      log.print(`  ${color.dim("docs:")} ${docPaths.join(", ")}`);
+    }
   }
-  console.log("");
+  log.print("");
 }

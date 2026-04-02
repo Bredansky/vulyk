@@ -6,7 +6,7 @@ export const MANIFEST_FILE = "vulyk.json";
 
 export function findManifest(): string | null {
   let dir = process.cwd();
-  while (true) {
+  for (;;) {
     const candidate = path.join(dir, MANIFEST_FILE);
     if (fs.existsSync(candidate)) return candidate;
     const parent = path.dirname(dir);

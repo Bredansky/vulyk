@@ -4,7 +4,9 @@ import * as os from "node:os";
 import { updateRootGitignore, getRootGitignoreEntries } from "./gitignore.js";
 
 export function resolvePath(p: string): string {
-  return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : path.resolve(p);
+  return p.startsWith("~")
+    ? path.join(os.homedir(), p.slice(1))
+    : path.resolve(p);
 }
 
 function copyDir(src: string, dest: string): void {
@@ -21,15 +23,23 @@ function readSkillName(srcDir: string): string | null {
   const skillFile = path.join(srcDir, "SKILL.md");
   if (!fs.existsSync(skillFile)) return null;
   const content = fs.readFileSync(skillFile, "utf8");
-  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  const match = /^---\r?\n(?<fm>[\s\S]*?)\r?\n---/.exec(content);
   if (!match) return null;
-  const nameLine = match[1].split("\n").find((l) => l.trimStart().startsWith("name:"));
-  return nameLine ? nameLine.split(":")[1].trim().replace(/^["']|["']$/g, "") : null;
+  const nameLine = (match.groups?.fm ?? "")
+    .split("\n")
+    .find((l) => l.trimStart().startsWith("name:"));
+  return nameLine
+    ? (nameLine.split(":")[1] ?? "").trim().replace(/^["']|["']$/g, "")
+    : null;
 }
 
 const MARKER = ".vulyk";
 
-export function install(packageName: string, srcDir: string, targetPaths: string[]): string {
+export function install(
+  packageName: string,
+  srcDir: string,
+  targetPaths: string[],
+): string {
   const installName = readSkillName(srcDir) ?? packageName;
   for (const targetPath of targetPaths) {
     const resolved = resolvePath(targetPath);

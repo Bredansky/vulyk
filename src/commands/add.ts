@@ -9,21 +9,31 @@ import { isEnabled } from "../lib/whitelist.js";
 import { type Manifest } from "../types.js";
 import { log } from "../lib/log.js";
 
-function addSingle(specifier: string, tmpDir: string, commit: string, manifest: Manifest): void {
+function addSingle(
+  specifier: string,
+  tmpDir: string,
+  commit: string,
+  manifest: Manifest,
+): void {
   const installedName = install(specifier, tmpDir, manifest.paths.skills);
   const pinned = specifier.includes("@")
     ? specifier.replace(/@[^@]+$/, `@${commit}`)
     : `${specifier}@${commit}`;
   manifest.skills[installedName] = pinned;
   if (!isEnabled(manifest, installedName)) {
-    log.warn(`"${installedName}" added but not in enabled whitelist — won't install on sync`);
+    log.warn(
+      `"${installedName}" added but not in enabled whitelist — won't install on sync`,
+    );
   }
   log.success(`Added "${installedName}" → ${manifest.paths.skills.join(", ")}`);
 }
 
 export function addCommand(specifier: string, opts: { name?: string }): void {
   const manifestPath = findManifest();
-  if (!manifestPath) { log.error("No vulyk.json found. Run `vulyk init` first."); process.exit(1); }
+  if (!manifestPath) {
+    log.error("No vulyk.json found. Run `vulyk init` first.");
+    process.exit(1);
+  }
 
   const manifest = readManifest(manifestPath);
   if (manifest.paths.skills.length === 0) {
@@ -32,17 +42,24 @@ export function addCommand(specifier: string, opts: { name?: string }): void {
     process.exit(1);
   }
 
-  const name = opts.name ?? specifier.split("/").filter(Boolean).pop()?.replace(/@.*$/, "") ?? specifier;
+  const name =
+    opts.name ??
+    specifier.split("/").filter(Boolean).pop()?.replace(/@.*$/, "") ??
+    specifier;
   log.info(`Fetching ${name}...`);
 
   const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
-  if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
+  if (fs.existsSync(tmpDir)) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 
   let commit: string;
   try {
     commit = fetchSource(parseSource(specifier), tmpDir);
   } catch (err) {
-    log.error(`Failed to fetch: ${err instanceof Error ? err.message : String(err)}`);
+    log.error(
+      `Failed to fetch: ${err instanceof Error ? err.message : String(err)}`,
+    );
     process.exit(1);
   }
 

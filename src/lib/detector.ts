@@ -15,7 +15,8 @@ export function detect(srcDir: string): Detection {
   }
 
   // Traverse children — find all subdirs with SKILL.md (including dotfile dirs like .curated)
-  const skills = fs.readdirSync(srcDir, { withFileTypes: true })
+  const skills = fs
+    .readdirSync(srcDir, { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .filter((e) => fs.existsSync(path.join(srcDir, e.name, "SKILL.md")))
     .map((e) => e.name);

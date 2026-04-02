@@ -3,9 +3,17 @@ import * as os from "node:os";
 import * as fs from "node:fs";
 import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
 import { parseSource, fetchSource } from "../lib/fetcher.js";
-import { install, uninstall, resolvePath, isManagedByVulyk } from "../lib/installer.js";
+import {
+  install,
+  uninstall,
+  resolvePath,
+  isManagedByVulyk,
+} from "../lib/installer.js";
 import { isEnabled } from "../lib/whitelist.js";
-import { updateRootGitignore, getRootGitignoreEntries } from "../lib/gitignore.js";
+import {
+  updateRootGitignore,
+  getRootGitignoreEntries,
+} from "../lib/gitignore.js";
 import { log } from "../lib/log.js";
 
 const MARKER = ".vulyk";
@@ -20,14 +28,18 @@ function syncExternalDocs(manifestPath: string): void {
 
   for (const [name, entry] of docEntries) {
     const docPaths = manifest.paths.docs;
-    const destDir = resolvePath(path.join(projectRoot, docPaths[0] ?? "docs/external"));
+    const destDir = resolvePath(
+      path.join(projectRoot, docPaths[0] ?? "docs/external"),
+    );
     fs.mkdirSync(destDir, { recursive: true });
 
     const destFile = path.join(destDir, `${name}.md`);
     log.info(`  syncing doc ${name}...`);
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", `doc-${name}`);
-    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
 
     try {
       const commit = fetchSource(parseSource(entry.source), tmpDir);
@@ -53,7 +65,9 @@ function syncExternalDocs(manifestPath: string): void {
 
       log.success(name);
     } catch (err) {
-      log.error(`Failed to sync doc "${name}": ${err instanceof Error ? err.message : String(err)}`);
+      log.error(
+        `Failed to sync doc "${name}": ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -62,7 +76,10 @@ function syncExternalDocs(manifestPath: string): void {
 
 export function syncCommand(): void {
   const manifestPath = findManifest();
-  if (!manifestPath) { log.error("No vulyk.json found."); process.exit(1); }
+  if (!manifestPath) {
+    log.error("No vulyk.json found.");
+    process.exit(1);
+  }
 
   const manifest = readManifest(manifestPath);
   const skills = Object.entries(manifest.skills);
@@ -74,8 +91,15 @@ export function syncCommand(): void {
     const resolved = resolvePath(targetPath);
     if (!fs.existsSync(resolved)) continue;
     for (const entry of fs.readdirSync(resolved, { withFileTypes: true })) {
-      if (entry.isDirectory() && !installedNames.has(entry.name) && isManagedByVulyk(path.join(resolved, entry.name))) {
-        fs.rmSync(path.join(resolved, entry.name), { recursive: true, force: true });
+      if (
+        entry.isDirectory() &&
+        !installedNames.has(entry.name) &&
+        isManagedByVulyk(path.join(resolved, entry.name))
+      ) {
+        fs.rmSync(path.join(resolved, entry.name), {
+          recursive: true,
+          force: true,
+        });
         log.dim(`  removed ${entry.name} (not in vulyk.json)`);
       }
     }
@@ -90,7 +114,9 @@ export function syncCommand(): void {
 
     log.info(`  syncing ${name}...`);
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
-    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
 
     try {
       fetchSource(parseSource(specifier), tmpDir);

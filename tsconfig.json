@@ -1,15 +1,15 @@
 {
+  "extends": "./node_modules/zirka/typescript/base.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ESNext"],
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types"],
     "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "allowImportingTsExtensions": false
+    "rootDir": "./src"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

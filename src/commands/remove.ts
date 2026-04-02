@@ -4,13 +4,20 @@ import { log } from "../lib/log.js";
 
 export function removeCommand(name: string): void {
   const manifestPath = findManifest();
-  if (!manifestPath) { log.error("No vulyk.json found."); process.exit(1); }
+  if (!manifestPath) {
+    log.error("No vulyk.json found.");
+    process.exit(1);
+  }
 
   const manifest = readManifest(manifestPath);
-  if (!manifest.skills[name]) { log.error(`"${name}" not found`); process.exit(1); }
+  if (!manifest.skills[name]) {
+    log.error(`"${name}" not found`);
+    process.exit(1);
+  }
 
   uninstall(name, manifest.paths.skills);
-  delete manifest.skills[name];
+  const { [name]: _, ...remainingSkills } = manifest.skills;
+  manifest.skills = remainingSkills;
   writeManifest(manifestPath, manifest);
   log.success(`Removed "${name}"`);
 }

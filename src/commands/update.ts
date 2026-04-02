@@ -10,26 +10,45 @@ import { color, log } from "../lib/log.js";
 const MARKER = ".vulyk";
 
 function getRepoCache(repoUrl: string): string {
-  return path.join(os.homedir(), ".vulyk", "cache", Buffer.from(repoUrl).toString("base64url").slice(0, 32));
+  return path.join(
+    os.homedir(),
+    ".vulyk",
+    "cache",
+    Buffer.from(repoUrl).toString("base64url").slice(0, 32),
+  );
 }
 
 function fetchLatest(repoCache: string, ref: string): string {
   try {
     if (fs.existsSync(repoCache)) {
-      execSync(`git --git-dir="${repoCache}" fetch --all --tags`, { stdio: "pipe" });
+      execSync(`git --git-dir="${repoCache}" fetch --all --tags`, {
+        stdio: "pipe",
+      });
     }
-  } catch { /* use cached */ }
-  return execSync(`git --git-dir="${repoCache}" rev-parse "${ref}"`, { encoding: "utf8", stdio: "pipe" }).trim();
+  } catch {
+    /* use cached */
+  }
+  return execSync(`git --git-dir="${repoCache}" rev-parse "${ref}"`, {
+    encoding: "utf8",
+    stdio: "pipe",
+  }).trim();
 }
 
-export async function updateCommand(name?: string): Promise<void> {
+export function updateCommand(name?: string): void {
   const manifestPath = findManifest();
-  if (!manifestPath) { log.error("No vulyk.json found."); process.exit(1); }
+  if (!manifestPath) {
+    log.error("No vulyk.json found.");
+    process.exit(1);
+  }
 
   const manifest = readManifest(manifestPath);
 
-  const skills = name ? Object.entries(manifest.skills).filter(([n]) => n === name) : Object.entries(manifest.skills);
-  const docs = name ? Object.entries(manifest.docs).filter(([n]) => n === name) : Object.entries(manifest.docs);
+  const skills = name
+    ? Object.entries(manifest.skills).filter(([n]) => n === name)
+    : Object.entries(manifest.skills);
+  const docs = name
+    ? Object.entries(manifest.docs).filter(([n]) => n === name)
+    : Object.entries(manifest.docs);
 
   if (skills.length === 0 && docs.length === 0) {
     log.warn(name ? `"${name}" not found` : "Nothing to update");
@@ -45,27 +64,40 @@ export async function updateCommand(name?: string): Promise<void> {
     const baseResolved = parseSource(baseSpecifier);
 
     let latestCommit: string;
-    try { latestCommit = fetchLatest(repoCache, baseResolved.ref); }
-    catch { log.error(`Could not resolve ref for "${n}"`); continue; }
+    try {
+      latestCommit = fetchLatest(repoCache, baseResolved.ref);
+    } catch {
+      log.error(`Could not resolve ref for "${n}"`);
+      continue;
+    }
 
-    const currentCommit = resolved.ref.match(/^[0-9a-f]{7,}$/) ? resolved.ref : null;
+    const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
+      ? resolved.ref
+      : null;
     if (currentCommit && latestCommit === currentCommit) {
-      console.log(`  ${color.dim(`${n} already up to date (${latestCommit.slice(0, 7)})`)}`);
+      log.print(
+        `  ${color.dim(`${n} already up to date (${latestCommit.slice(0, 7)})`)}`,
+      );
       continue;
     }
 
     const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
-    console.log(`  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`);
+    log.print(
+      `  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
+    );
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", n);
-    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
 
     try {
       baseResolved.ref = latestCommit;
       fetchSource(baseResolved, tmpDir);
       install(n, tmpDir, manifest.paths.skills);
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      manifest.skills[n] = `${baseSpecifier.replace(/@.*$/, "")}@${latestCommit}`;
+      manifest.skills[n] =
+        `${baseSpecifier.replace(/@.*$/, "")}@${latestCommit}`;
       log.success(n);
       updated++;
     } catch (err) {
@@ -80,26 +112,43 @@ export async function updateCommand(name?: string): Promise<void> {
     const baseResolved = parseSource(baseSpecifier);
 
     let latestCommit: string;
-    try { latestCommit = fetchLatest(repoCache, baseResolved.ref); }
-    catch { log.error(`Could not resolve ref for doc "${n}"`); continue; }
+    try {
+      latestCommit = fetchLatest(repoCache, baseResolved.ref);
+    } catch {
+      log.error(`Could not resolve ref for doc "${n}"`);
+      continue;
+    }
 
-    const currentCommit = resolved.ref.match(/^[0-9a-f]{7,}$/) ? resolved.ref : null;
+    const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
+      ? resolved.ref
+      : null;
     if (currentCommit && latestCommit === currentCommit) {
-      console.log(`  ${color.dim(`doc:${n} already up to date (${latestCommit.slice(0, 7)})`)}`);
+      log.print(
+        `  ${color.dim(`doc:${n} already up to date (${latestCommit.slice(0, 7)})`)}`,
+      );
       continue;
     }
 
     const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
-    console.log(`  ${color.blue(`doc:${n}`)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`);
+    log.print(
+      `  ${color.blue(`doc:${n}`)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
+    );
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", `doc-${n}`);
-    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
 
     try {
       baseResolved.ref = latestCommit;
       fetchSource(baseResolved, tmpDir);
 
-      const destDir = resolvePath(path.join(path.dirname(manifestPath), manifest.paths.docs[0] ?? "docs/external"));
+      const destDir = resolvePath(
+        path.join(
+          path.dirname(manifestPath),
+          manifest.paths.docs[0] ?? "docs/external",
+        ),
+      );
       fs.mkdirSync(destDir, { recursive: true });
       const mdFile = fs.readdirSync(tmpDir).find((f) => f.endsWith(".md"));
       if (!mdFile) throw new Error("No markdown file found");
@@ -107,7 +156,10 @@ export async function updateCommand(name?: string): Promise<void> {
       fs.writeFileSync(path.join(destDir, MARKER), "");
       fs.rmSync(tmpDir, { recursive: true, force: true });
 
-      manifest.docs[n] = { ...entry, source: `${baseSpecifier.replace(/@.*$/, "")}@${latestCommit}` };
+      manifest.docs[n] = {
+        ...entry,
+        source: `${baseSpecifier.replace(/@.*$/, "")}@${latestCommit}`,
+      };
       log.success(`doc:${n}`);
       updated++;
     } catch (err) {
@@ -116,6 +168,6 @@ export async function updateCommand(name?: string): Promise<void> {
   }
 
   if (updated > 0) writeManifest(manifestPath, manifest);
-  console.log("");
+  log.print("");
   if (updated > 0) log.success(`Updated ${String(updated)} item(s)`);
 }

@@ -8,13 +8,21 @@ import { log } from "../lib/log.js";
 
 export function enableCommand(name: string): void {
   const manifestPath = findManifest();
-  if (!manifestPath) { log.error("No vulyk.json found."); process.exit(1); }
+  if (!manifestPath) {
+    log.error("No vulyk.json found.");
+    process.exit(1);
+  }
 
   const manifest = readManifest(manifestPath);
-  if (!manifest.skills[name]) { log.error(`"${name}" not found`); process.exit(1); }
+  if (!manifest.skills[name]) {
+    log.error(`"${name}" not found`);
+    process.exit(1);
+  }
 
   if (!manifest.enabled) {
-    log.warn(`No whitelist defined — all skills already enabled. Add "enabled": [] to use a whitelist.`);
+    log.warn(
+      `No whitelist defined — all skills already enabled. Add "enabled": [] to use a whitelist.`,
+    );
     return;
   }
 
@@ -24,7 +32,9 @@ export function enableCommand(name: string): void {
   }
 
   const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
-  if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
+  if (fs.existsSync(tmpDir)) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
   fetchSource(parseSource(manifest.skills[name]), tmpDir);
   install(name, tmpDir, manifest.paths.skills);
   fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -33,10 +43,16 @@ export function enableCommand(name: string): void {
 
 export function disableCommand(name: string): void {
   const manifestPath = findManifest();
-  if (!manifestPath) { log.error("No vulyk.json found."); process.exit(1); }
+  if (!manifestPath) {
+    log.error("No vulyk.json found.");
+    process.exit(1);
+  }
 
   const manifest = readManifest(manifestPath);
-  if (!manifest.skills[name]) { log.error(`"${name}" not found`); process.exit(1); }
+  if (!manifest.skills[name]) {
+    log.error(`"${name}" not found`);
+    process.exit(1);
+  }
 
   manifest.enabled = manifest.enabled
     ? manifest.enabled.filter((n) => n !== name)

@@ -13,10 +13,7 @@ import { docAddCommand } from "./commands/doc-add.js";
 
 const program = new Command();
 
-program
-  .name("vulyk")
-  .description("npm for AI agent skills")
-  .version("0.1.0");
+program.name("vulyk").description("npm for AI agent skills").version("0.1.0");
 
 program
   .command("init")
@@ -27,7 +24,9 @@ program
   .command("add <specifier>")
   .description("Add a skill (owner/repo/path or GitHub URL)")
   .option("-n, --name <name>", "override the skill name")
-  .action((specifier, opts) => addCommand(specifier, { name: opts.name }));
+  .action((specifier: string, opts: { name?: string }) => {
+    addCommand(specifier, { name: opts.name });
+  });
 
 program
   .command("remove <name>")
@@ -53,25 +52,41 @@ program
 program
   .command("diff [name]")
   .description("Show what would change on update")
-  .action((name) => diffCommand(name));
+  .action((name: string | undefined) => {
+    diffCommand(name);
+  });
 
 program
   .command("update [name]")
   .description("Update skills/docs to latest")
-  .action((name) => updateCommand(name));
+  .action((name: string | undefined) => {
+    updateCommand(name);
+  });
 
 program
   .command("doc-add <specifier>")
   .description("Add an external doc from a remote source")
   .option("-t, --targets <paths...>", "target paths this doc applies to")
   .option("-d, --description <desc>", "description for AGENTS.md")
-  .action((specifier, opts) => docAddCommand(specifier, { targets: opts.targets ?? [], description: opts.description }));
+  .action(
+    (specifier: string, opts: { targets?: string[]; description?: string }) => {
+      docAddCommand(specifier, {
+        targets: opts.targets ?? [],
+        description: opts.description,
+      });
+    },
+  );
 
 program
   .command("docs")
   .description("Generate AGENTS.md files from docs/ folder")
-  .option("--also <filenames...>", "also create these files importing AGENTS.md")
-  .action((opts) => docsCommand({ also: opts.also }));
+  .option(
+    "--also <filenames...>",
+    "also create these files importing AGENTS.md",
+  )
+  .action((opts: { also?: string[] }) => {
+    docsCommand({ also: opts.also });
+  });
 
 program
   .command("sync")

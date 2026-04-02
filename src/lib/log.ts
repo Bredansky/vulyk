@@ -13,14 +13,37 @@ export const color = {
   dim: (s: string) => `${DIM}${s}${RESET}`,
 };
 
+/* eslint-disable no-console -- intentional: this is the logging utility */
 export const log = {
-  green: (msg: string) => console.log(color.green(msg)),
-  red: (msg: string) => console.log(color.red(msg)),
-  yellow: (msg: string) => console.log(color.yellow(msg)),
-  blue: (msg: string) => console.log(color.blue(msg)),
-  dim: (msg: string) => console.log(color.dim(msg)),
-  info: (msg: string) => console.log(msg),
-  error: (msg: string) => console.error(color.red(`✖ ${msg}`)),
-  success: (msg: string) => console.log(color.green(`✓ ${msg}`)),
-  warn: (msg: string) => console.log(color.yellow(`⚠ ${msg}`)),
+  green: (msg: string) => {
+    console.log(color.green(msg));
+  },
+  red: (msg: string) => {
+    console.log(color.red(msg));
+  },
+  yellow: (msg: string) => {
+    console.log(color.yellow(msg));
+  },
+  blue: (msg: string) => {
+    console.log(color.blue(msg));
+  },
+  dim: (msg: string) => {
+    console.log(color.dim(msg));
+  },
+  info: (msg: string) => {
+    console.log(msg);
+  },
+  error: (msg: string) => {
+    console.error(color.red(`✖ ${msg}`));
+  },
+  success: (msg: string) => {
+    console.log(color.green(`✓ ${msg}`));
+  },
+  warn: (msg: string) => {
+    console.log(color.yellow(`⚠ ${msg}`));
+  },
+  print: (msg: string) => {
+    console.log(msg);
+  },
 };
+/* eslint-enable no-console -- intentional: this is the logging utility */
