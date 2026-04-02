@@ -102,6 +102,30 @@ export function docsCommand(opts: { also?: string[] }): void {
     }
   }
 
+  // Also include external docs from vulyk.json manifest
+  if (manifest) {
+    for (const [name, entry] of Object.entries(manifest.docs)) {
+      const externalFile = path.join(projectRoot, manifest.paths.docs[0] ?? "docs/external", `${name}.md`);
+      if (!fs.existsSync(externalFile)) continue;
+      const body = fs.readFileSync(externalFile, "utf8");
+      const title = parseTitle(body);
+      for (const targetPath of entry.targets) {
+        const resolved = resolvePath(path.join(projectRoot, targetPath));
+        const targetDir = fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
+          ? resolved
+          : path.dirname(resolved);
+        if (!byTarget.has(targetDir)) byTarget.set(targetDir, []);
+        byTarget.get(targetDir)!.push({
+          filePath: externalFile,
+          paths: entry.targets,
+          description: entry.description ?? "",
+          title,
+          relativePath: `external/${name}.md`,
+        });
+      }
+    }
+  }
+
   let generated = 0;
 
   for (const [targetDir, docFiles] of byTarget) {

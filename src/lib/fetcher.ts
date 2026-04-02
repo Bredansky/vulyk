@@ -75,6 +75,27 @@ export function fetchSource(resolved: ResolvedSource, destDir: string): string {
   fs.mkdirSync(destDir, { recursive: true });
 
   const archiveTarget = resolved.subPath ? `${resolved.ref}:${resolved.subPath}` : resolved.ref;
+
+  // Check if subPath points to a single file (not a directory)
+  if (resolved.subPath && resolved.subPath.includes(".")) {
+    try {
+      const objectType = execSync(
+        `git --git-dir="${repoCache}" cat-file -t "${archiveTarget}"`,
+        { encoding: "utf8", stdio: "pipe" }
+      ).trim();
+
+      if (objectType === "blob") {
+        const fileName = path.basename(resolved.subPath);
+        const content = execSync(
+          `git --git-dir="${repoCache}" show "${archiveTarget}"`,
+          { encoding: "utf8", stdio: "pipe" }
+        );
+        fs.writeFileSync(path.join(destDir, fileName), content);
+        return commit;
+      }
+    } catch { /* fall through to archive */ }
+  }
+
   const archivePath = path.join(os.tmpdir(), `vulyk-${Date.now()}.tar`);
   execSync(`git --git-dir="${repoCache}" archive --format=tar -o "${archivePath}" "${archiveTarget}"`, { stdio: "pipe" });
   execSync(`tar -x -f "${archivePath}" -C "${destDir}"`, { stdio: "pipe" });
