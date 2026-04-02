@@ -4,13 +4,26 @@ import * as path from "node:path";
 const MARKER_START = "# managed by vulyk";
 const MARKER_END = "# end vulyk";
 
-export function updateGitignore(dir: string, entries: string[]): void {
-  const gitignorePath = path.join(dir, ".gitignore");
+function findRoot(): string {
+  // Walk up to find root .gitignore or package.json
+  let dir = process.cwd();
+  while (true) {
+    if (fs.existsSync(path.join(dir, ".git")) || fs.existsSync(path.join(dir, "package.json"))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return process.cwd();
+    dir = parent;
+  }
+}
+
+export function updateRootGitignore(entries: string[]): void {
+  const root = findRoot();
+  const gitignorePath = path.join(root, ".gitignore");
   const existing = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf8") : "";
 
-  // Strip existing vulyk block
   const withoutBlock = existing
-    .replace(new RegExp(`${MARKER_START}[\\s\\S]*?${MARKER_END}\\n?`, "g"), "")
+    .replace(new RegExp(`\\n?${MARKER_START}[\\s\\S]*?${MARKER_END}\\n?`, "g"), "")
     .trimEnd();
 
   if (entries.length === 0) {
@@ -24,8 +37,9 @@ export function updateGitignore(dir: string, entries: string[]): void {
   fs.writeFileSync(gitignorePath, result);
 }
 
-export function getGitignoreEntries(dir: string): string[] {
-  const gitignorePath = path.join(dir, ".gitignore");
+export function getRootGitignoreEntries(): string[] {
+  const root = findRoot();
+  const gitignorePath = path.join(root, ".gitignore");
   if (!fs.existsSync(gitignorePath)) return [];
   const content = fs.readFileSync(gitignorePath, "utf8");
   const match = new RegExp(`${MARKER_START}([\\s\\S]*?)${MARKER_END}`).exec(content);

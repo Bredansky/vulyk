@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { updateGitignore, getGitignoreEntries } from "./gitignore.js";
+import { updateRootGitignore, getRootGitignoreEntries } from "./gitignore.js";
 
 export function resolvePath(p: string): string {
   return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : path.resolve(p);
@@ -37,11 +37,13 @@ export function install(packageName: string, srcDir: string, targetPaths: string
     if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
     copyDir(srcDir, dest);
     fs.writeFileSync(path.join(dest, MARKER), "");
-    // Add to .gitignore
-    const entries = new Set(getGitignoreEntries(resolved));
-    entries.add(`${installName}/`);
-    updateGitignore(resolved, [...entries].sort());
   }
+  // Add to root .gitignore — use relative path from first target
+  const entries = new Set(getRootGitignoreEntries());
+  for (const targetPath of targetPaths) {
+    entries.add(`${targetPath}/${installName}/`);
+  }
+  updateRootGitignore([...entries].sort());
   return installName;
 }
 
@@ -50,10 +52,11 @@ export function uninstall(name: string, targetPaths: string[]): void {
     const resolved = resolvePath(targetPath);
     const dest = path.join(resolved, name);
     if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
-    // Remove from .gitignore
-    const entries = getGitignoreEntries(resolved).filter((e) => e !== `${name}/`);
-    updateGitignore(resolved, entries);
   }
+  // Remove from root .gitignore
+  const toRemove = new Set(targetPaths.map((p) => `${p}/${name}/`));
+  const entries = getRootGitignoreEntries().filter((e) => !toRemove.has(e));
+  updateRootGitignore(entries);
 }
 
 export function isManagedByVulyk(skillDir: string): boolean {
