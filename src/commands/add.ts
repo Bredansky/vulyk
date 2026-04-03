@@ -8,6 +8,7 @@ import { install } from "../lib/installer.js";
 import { isEnabled } from "../lib/whitelist.js";
 import { type Manifest } from "../types.js";
 import { log } from "../lib/log.js";
+import { pinSpecifier, stripPinnedRef } from "../lib/specifier.js";
 
 function addSingle(
   specifier: string,
@@ -16,16 +17,14 @@ function addSingle(
   manifest: Manifest,
 ): void {
   const installedName = install(specifier, tmpDir, [manifest.skills.path]);
-  const pinned = specifier.includes("@")
-    ? specifier.replace(/@[^@]+$/, `@${commit}`)
-    : `${specifier}@${commit}`;
+  const pinned = pinSpecifier(specifier, commit);
   manifest.skills.entries[installedName] = pinned;
   if (!isEnabled(manifest, installedName)) {
     log.warn(
-      `"${installedName}" added but not in enabled whitelist — won't install on sync`,
+      `"${installedName}" added but not in enabled whitelist -- won't install on sync`,
     );
   }
-  log.success(`Added "${installedName}" → ${manifest.skills.path}`);
+  log.success(`Added "${installedName}" -> ${manifest.skills.path}`);
 }
 
 export function addCommand(specifier: string, opts: { name?: string }): void {
@@ -76,7 +75,7 @@ export function addCommand(specifier: string, opts: { name?: string }): void {
     }
     log.info(`Found ${String(skills.length)} skills: ${skills.join(", ")}`);
     for (const skillName of skills) {
-      const skillSpecifier = `${specifier.replace(/@.*$/, "")}/${skillName}`;
+      const skillSpecifier = `${stripPinnedRef(specifier)}/${skillName}`;
       addSingle(skillSpecifier, path.join(tmpDir, skillName), commit, manifest);
     }
   }

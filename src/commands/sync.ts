@@ -15,6 +15,7 @@ import {
   getRootGitignoreEntries,
 } from "../lib/gitignore.js";
 import { log } from "../lib/log.js";
+import { pinSpecifier } from "../lib/specifier.js";
 import { docsCommand } from "./docs.js";
 
 const MARKER = ".vulyk";
@@ -117,9 +118,10 @@ function syncExternalDocs(manifestPath: string): void {
       if (!mdFile) throw new Error("No markdown file found in fetched content");
 
       const rawBody = fs.readFileSync(path.join(tmpDir, mdFile), "utf8");
+      const pinnedSource = pinSpecifier(entry.source, commit);
       const normalizedBody = normalizeExternalDoc(
         rawBody,
-        entry.source,
+        pinnedSource,
         entry.targets,
         entry.description,
       );
@@ -127,10 +129,9 @@ function syncExternalDocs(manifestPath: string): void {
       fs.writeFileSync(path.join(destDir, MARKER), "");
       fs.rmSync(tmpDir, { recursive: true, force: true });
 
-      const baseSpecifier = entry.source.replace(/@[0-9a-f]{7,}$/, "");
       manifest.docs.entries[name] = {
         ...entry,
-        source: `${baseSpecifier}@${commit}`,
+        source: pinnedSource,
       };
       changed = true;
 
@@ -157,6 +158,7 @@ export function syncCommand(): void {
   }
 
   const manifest = readManifest(manifestPath);
+  let changed = false;
   cleanupStaleManagedSkillPaths(manifestPath);
   const skills = Object.entries(manifest.skills.entries);
   const installedNames = new Set(Object.keys(manifest.skills.entries));
@@ -193,14 +195,21 @@ export function syncCommand(): void {
     }
 
     try {
-      fetchSource(parseSource(specifier), tmpDir);
+      const commit = fetchSource(parseSource(specifier), tmpDir);
       install(name, tmpDir, [manifest.skills.path]);
+      const pinnedSpecifier = pinSpecifier(specifier, commit);
+      if (manifest.skills.entries[name] !== pinnedSpecifier) {
+        manifest.skills.entries[name] = pinnedSpecifier;
+        changed = true;
+      }
       fs.rmSync(tmpDir, { recursive: true, force: true });
       log.success(name);
     } catch (err) {
       log.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  if (changed) writeManifest(manifestPath, manifest);
 
   if (Object.keys(manifest.docs.entries).length > 0) {
     log.info("\n  syncing external docs...");

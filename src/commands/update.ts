@@ -7,6 +7,7 @@ import { parseSource, fetchSource } from "../lib/fetcher.js";
 import { install, resolvePath } from "../lib/installer.js";
 import { color, log } from "../lib/log.js";
 import { getRepoCachePath } from "../lib/cache.js";
+import { pinSpecifier, stripPinnedRef } from "../lib/specifier.js";
 
 const MARKER = ".vulyk";
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
@@ -86,7 +87,7 @@ export function updateCommand(name?: string): void {
   for (const [n, specifier] of skills) {
     const resolved = parseSource(specifier);
     const repoCache = getRepoCachePath(resolved.repoUrl);
-    const baseSpecifier = specifier.replace(/@[0-9a-f]{7,}$/, "");
+    const baseSpecifier = stripPinnedRef(specifier);
     const baseResolved = parseSource(baseSpecifier);
 
     let latestCommit: string;
@@ -122,8 +123,7 @@ export function updateCommand(name?: string): void {
       fetchSource(baseResolved, tmpDir);
       install(n, tmpDir, [manifest.skills.path]);
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      manifest.skills.entries[n] =
-        `${baseSpecifier.replace(/@.*$/, "")}@${latestCommit}`;
+      manifest.skills.entries[n] = pinSpecifier(baseSpecifier, latestCommit);
       log.success(n);
       updated++;
     } catch (err) {
@@ -136,7 +136,7 @@ export function updateCommand(name?: string): void {
   for (const [n, entry] of docs) {
     const resolved = parseSource(entry.source);
     const repoCache = getRepoCachePath(resolved.repoUrl);
-    const baseSpecifier = entry.source.replace(/@[0-9a-f]{7,}$/, "");
+    const baseSpecifier = stripPinnedRef(entry.source);
     const baseResolved = parseSource(baseSpecifier);
 
     let latestCommit: string;
@@ -179,9 +179,10 @@ export function updateCommand(name?: string): void {
       if (!mdFile) throw new Error("No markdown file found");
 
       const rawBody = fs.readFileSync(path.join(tmpDir, mdFile), "utf8");
+      const pinnedSource = pinSpecifier(baseSpecifier, latestCommit);
       const normalizedBody = normalizeExternalDoc(
         rawBody,
-        entry.source,
+        pinnedSource,
         entry.targets,
         entry.description,
       );
@@ -191,7 +192,7 @@ export function updateCommand(name?: string): void {
 
       manifest.docs.entries[n] = {
         ...entry,
-        source: `${baseSpecifier.replace(/@.*$/, "")}@${latestCommit}`,
+        source: pinnedSource,
       };
       log.success(n);
       updated++;

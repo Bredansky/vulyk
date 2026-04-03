@@ -2,7 +2,7 @@
 
 > vulyk means _hive_ in Ukrainian
 
-`vulyk` is a package manager for AI agent skills and docs. It installs skills from GitHub, pins them to commits, syncs them across clones, fetches external markdown docs, and generates `AGENTS.md` plus optional alias files.
+`vulyk` is a package manager for AI agent skills and docs. It installs skills from GitHub, pins them to immutable commit URLs, syncs them across clones, fetches external markdown docs, and generates `AGENTS.md` plus optional alias files.
 
 ## Install
 
@@ -117,7 +117,7 @@ Generated `AGENTS.md` includes the doc title, description, and a pointer to the 
     "also": ["CLAUDE.md"],
     "entries": {
       "project-structure": {
-        "source": "https://github.com/alan2207/bulletproof-react/blob/master/docs/project-structure.md@c66ea06...",
+        "source": "https://github.com/alan2207/bulletproof-react/blob/c66ea06.../docs/project-structure.md",
         "targets": ["src"],
         "description": "Project structure conventions and patterns."
       }
@@ -137,12 +137,16 @@ Generated `AGENTS.md` includes the doc title, description, and a pointer to the 
 
 ## Specifier format
 
-| Format                                           | Resolves to                |
-| ------------------------------------------------ | -------------------------- |
-| `owner/repo/path`                                | HEAD of the default branch |
-| `owner/repo/path@main`                           | A branch or tag            |
-| `owner/repo/path@abc123f`                        | A pinned commit            |
-| `https://github.com/owner/repo/tree/branch/path` | A GitHub URL               |
+| Format                                            | Resolves to                |
+| ------------------------------------------------- | -------------------------- |
+| `owner/repo/path`                                 | HEAD of the default branch |
+| `owner/repo/path@main`                            | A branch or tag            |
+| `owner/repo/path@abc123f`                         | A pinned commit            |
+| `https://github.com/owner/repo/tree/<commit>/...` | An immutable GitHub tree   |
+| `https://github.com/owner/repo/blob/<commit>/...` | An immutable GitHub blob   |
+| `https://github.com/owner/repo/tree/branch/path`  | A GitHub URL               |
+
+Pinned GitHub URLs are rewritten to real immutable `tree/<commit>` or `blob/<commit>` links during `add`, `sync`, and `update`, so manifest entries stay clickable.
 
 ## How managed files work
 
