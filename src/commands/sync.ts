@@ -41,6 +41,45 @@ function buildDocFrontmatter(
   return lines.join("\n");
 }
 
+function cleanupStaleManagedSkillPaths(manifestPath: string): void {
+  const manifest = readManifest(manifestPath);
+  const projectRoot = path.dirname(manifestPath);
+  const expectedSkillEntries = new Set(
+    Object.keys(manifest.skills.entries).map(
+      (name) => `${manifest.skills.path}/${name}/`,
+    ),
+  );
+
+  const managedEntries = getRootGitignoreEntries();
+  const staleSkillEntries = managedEntries.filter((entry) => {
+    if (!entry.endsWith("/")) return false;
+    if (entry.startsWith("**/")) return false;
+    if (entry === `${manifest.docs.path}/`) return false;
+    return !expectedSkillEntries.has(entry);
+  });
+
+  if (staleSkillEntries.length === 0) return;
+
+  const removableEntries: string[] = [];
+  for (const entry of staleSkillEntries) {
+    const skillDir = path.join(projectRoot, entry.replace(/[\\/]+$/, ""));
+    if (!fs.existsSync(skillDir)) {
+      removableEntries.push(entry);
+      continue;
+    }
+    if (!isManagedByVulyk(skillDir)) continue;
+
+    fs.rmSync(skillDir, { recursive: true, force: true });
+    removableEntries.push(entry);
+    log.dim(`  removed ${entry} (stale managed path)`);
+  }
+
+  if (removableEntries.length === 0) return;
+
+  updateRootGitignore(
+    managedEntries.filter((entry) => !removableEntries.includes(entry)).sort(),
+  );
+}
 function normalizeExternalDoc(
   body: string,
   source: string,
@@ -118,6 +157,7 @@ export function syncCommand(): void {
   }
 
   const manifest = readManifest(manifestPath);
+  cleanupStaleManagedSkillPaths(manifestPath);
   const skills = Object.entries(manifest.skills.entries);
   const installedNames = new Set(Object.keys(manifest.skills.entries));
 

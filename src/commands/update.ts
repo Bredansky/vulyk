@@ -6,6 +6,7 @@ import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
 import { parseSource, fetchSource } from "../lib/fetcher.js";
 import { install, resolvePath } from "../lib/installer.js";
 import { color, log } from "../lib/log.js";
+import { getRepoCachePath } from "../lib/cache.js";
 
 const MARKER = ".vulyk";
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
@@ -39,15 +40,6 @@ function normalizeExternalDoc(
 ): string {
   const normalizedBody = body.replace(FRONTMATTER_RE, "").trimStart();
   return `${buildDocFrontmatter(source, targets, description)}${normalizedBody}`;
-}
-
-function getRepoCache(repoUrl: string): string {
-  return path.join(
-    os.homedir(),
-    ".vulyk",
-    "cache",
-    Buffer.from(repoUrl).toString("base64url").slice(0, 32),
-  );
 }
 
 function fetchLatest(repoCache: string, ref: string): string {
@@ -93,7 +85,7 @@ export function updateCommand(name?: string): void {
 
   for (const [n, specifier] of skills) {
     const resolved = parseSource(specifier);
-    const repoCache = getRepoCache(resolved.repoUrl);
+    const repoCache = getRepoCachePath(resolved.repoUrl);
     const baseSpecifier = specifier.replace(/@[0-9a-f]{7,}$/, "");
     const baseResolved = parseSource(baseSpecifier);
 
@@ -117,7 +109,7 @@ export function updateCommand(name?: string): void {
 
     const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
     log.print(
-      `  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
+      `  ${color.blue(n)} ${color.dim(`${prev} -> ${latestCommit.slice(0, 7)}`)}`,
     );
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", n);
@@ -143,7 +135,7 @@ export function updateCommand(name?: string): void {
 
   for (const [n, entry] of docs) {
     const resolved = parseSource(entry.source);
-    const repoCache = getRepoCache(resolved.repoUrl);
+    const repoCache = getRepoCachePath(resolved.repoUrl);
     const baseSpecifier = entry.source.replace(/@[0-9a-f]{7,}$/, "");
     const baseResolved = parseSource(baseSpecifier);
 
@@ -167,7 +159,7 @@ export function updateCommand(name?: string): void {
 
     const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
     log.print(
-      `  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
+      `  ${color.blue(n)} ${color.dim(`${prev} -> ${latestCommit.slice(0, 7)}`)}`,
     );
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", `doc-${n}`);

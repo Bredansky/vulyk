@@ -1,19 +1,9 @@
-import * as path from "node:path";
-import * as os from "node:os";
 import * as fs from "node:fs";
 import { execSync } from "node:child_process";
 import { findManifest, readManifest } from "../lib/manifest.js";
 import { parseSource } from "../lib/fetcher.js";
 import { color, log } from "../lib/log.js";
-
-function getRepoCache(repoUrl: string): string {
-  return path.join(
-    os.homedir(),
-    ".vulyk",
-    "cache",
-    Buffer.from(repoUrl).toString("base64url").slice(0, 32),
-  );
-}
+import { getRepoCachePath } from "../lib/cache.js";
 
 function fetchLatest(repoCache: string, ref: string): string {
   try {
@@ -100,7 +90,7 @@ export function diffCommand(name?: string): void {
     log.print(color.dim("\nSkills:"));
     for (const [n, specifier] of skills) {
       const resolved = parseSource(specifier);
-      const repoCache = getRepoCache(resolved.repoUrl);
+      const repoCache = getRepoCachePath(resolved.repoUrl);
       const baseResolved = parseSource(specifier.replace(/@[0-9a-f]{7,}$/, ""));
 
       let latestCommit: string;
@@ -124,7 +114,7 @@ export function diffCommand(name?: string): void {
       hasUpdates = true;
       const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
       log.print(
-        `  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
+        `  ${color.blue(n)} ${color.dim(`${prev} -> ${latestCommit.slice(0, 7)}`)}`,
       );
       if (currentCommit) {
         showDiff(
@@ -142,7 +132,7 @@ export function diffCommand(name?: string): void {
     log.print(color.dim("\nDocs:"));
     for (const [n, entry] of docs) {
       const resolved = parseSource(entry.source);
-      const repoCache = getRepoCache(resolved.repoUrl);
+      const repoCache = getRepoCachePath(resolved.repoUrl);
       const baseResolved = parseSource(
         entry.source.replace(/@[0-9a-f]{7,}$/, ""),
       );
@@ -168,7 +158,7 @@ export function diffCommand(name?: string): void {
       hasUpdates = true;
       const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
       log.print(
-        `  ${color.blue(n)} ${color.dim(`${prev} → ${latestCommit.slice(0, 7)}`)}`,
+        `  ${color.blue(n)} ${color.dim(`${prev} -> ${latestCommit.slice(0, 7)}`)}`,
       );
       if (currentCommit) {
         showDiff(
