@@ -2,7 +2,7 @@
 
 > :bee: vulyk means _hive_ in Ukrainian
 
-`vulyk` is a package manager for AI agent skills and docs. It installs skills from GitHub, pins them to immutable commit URLs, syncs them across clones, fetches external markdown docs, and generates `AGENTS.md` plus optional alias files.
+`vulyk` is a lightweight, spec-driven package manager for AI agent skills, external agent docs, and generated `AGENTS.md` files. It installs skills from GitHub, pins them to immutable commit URLs, syncs them across clones, and keeps agent context reproducible.
 
 ## :package: Install
 
