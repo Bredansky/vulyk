@@ -1,16 +1,16 @@
 # vulyk
 
-> vulyk means _hive_ in Ukrainian
+> :bee: vulyk means _hive_ in Ukrainian
 
 `vulyk` is a package manager for AI agent skills and docs. It installs skills from GitHub, pins them to immutable commit URLs, syncs them across clones, fetches external markdown docs, and generates `AGENTS.md` plus optional alias files.
 
-## Install
+## :package: Install
 
 ```sh
 npm install -g vulyk
 ```
 
-## Quick start
+## :zap: Quick start
 
 ```sh
 cd my-project
@@ -22,7 +22,7 @@ vulyk doc-add "https://github.com/alan2207/bulletproof-react/blob/master/docs/pr
 vulyk sync
 ```
 
-## Commands
+## :hammer_and_wrench: Commands
 
 ### `vulyk init`
 
@@ -86,7 +86,7 @@ By default it uses `docs.also` from `vulyk.json`, so alias files are reproducibl
 
 The `npm install` for this manifest. It syncs skills, syncs external docs, and regenerates `AGENTS.md` plus aliases from `docs.also`.
 
-## Local docs
+## :memo: Local docs
 
 Local docs need frontmatter:
 
@@ -101,7 +101,7 @@ description: API route conventions and patterns.
 
 Generated `AGENTS.md` includes the doc title, description, and a pointer to the full markdown file.
 
-## `vulyk.json`
+## :receipt: `vulyk.json`
 
 ```json
 {
@@ -135,7 +135,7 @@ Generated `AGENTS.md` includes the doc title, description, and a pointer to the 
 | `docs.also`      | Alias files to regenerate alongside `AGENTS.md` |
 | `docs.entries`   | External docs pinned to a commit                |
 
-## Specifier format
+## :link: Specifier format
 
 | Format                                            | Resolves to                |
 | ------------------------------------------------- | -------------------------- |
@@ -148,13 +148,13 @@ Generated `AGENTS.md` includes the doc title, description, and a pointer to the 
 
 Pinned GitHub URLs are rewritten to real immutable `tree/<commit>` or `blob/<commit>` links during `add`, `sync`, and `update`, so manifest entries stay clickable.
 
-## How managed files work
+## :broom: How managed files work
 
 - Each installed skill gets a `.vulyk` marker file.
 - Root `.gitignore` is updated with skill/doc paths and generated alias globs.
 - Local skills without a `.vulyk` marker are never removed by `sync`.
 - External docs are normalized with frontmatter during sync so local and remote docs behave the same way.
 
-## License
+## :page_facing_up: License
 
 MIT
