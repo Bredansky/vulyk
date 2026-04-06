@@ -46,8 +46,8 @@ function cleanupStaleManagedSkillPaths(manifestPath: string): void {
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
   const expectedSkillEntries = new Set(
-    Object.keys(manifest.skills.entries).map(
-      (name) => `${manifest.skills.path}/${name}/`,
+    Object.keys(manifest.skills.entries).flatMap((name) =>
+      manifest.skills.outputPaths.map((outputPath) => `${outputPath}/${name}/`),
     ),
   );
 
@@ -55,7 +55,11 @@ function cleanupStaleManagedSkillPaths(manifestPath: string): void {
   const staleSkillEntries = managedEntries.filter((entry) => {
     if (!entry.endsWith("/")) return false;
     if (entry.startsWith("**/")) return false;
-    if (entry === `${manifest.docs.path}/`) return false;
+    if (
+      manifest.docs.outputPaths.some((outputPath) => entry === `${outputPath}/`)
+    ) {
+      return false;
+    }
     return !expectedSkillEntries.has(entry);
   });
 
@@ -81,6 +85,7 @@ function cleanupStaleManagedSkillPaths(manifestPath: string): void {
     managedEntries.filter((entry) => !removableEntries.includes(entry)).sort(),
   );
 }
+
 function normalizeExternalDoc(
   body: string,
   source: string,
@@ -91,19 +96,19 @@ function normalizeExternalDoc(
   return `${buildDocFrontmatter(source, targets, description)}${normalizedBody}`;
 }
 
-function syncExternalDocs(manifestPath: string): void {
+async function syncExternalDocs(manifestPath: string): Promise<void> {
   const manifest = readManifest(manifestPath);
   const docEntries = Object.entries(manifest.docs.entries);
   if (docEntries.length === 0) return;
 
   const projectRoot = path.dirname(manifestPath);
   let changed = false;
+  const docOutputPaths =
+    manifest.docs.outputPaths.length > 0
+      ? manifest.docs.outputPaths
+      : ["docs/external"];
 
   for (const [name, entry] of docEntries) {
-    const destDir = resolvePath(path.join(projectRoot, manifest.docs.path));
-    fs.mkdirSync(destDir, { recursive: true });
-
-    const destFile = path.join(destDir, `${name}.md`);
     log.info(`  syncing doc ${name}...`);
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", `doc-${name}`);
@@ -112,31 +117,39 @@ function syncExternalDocs(manifestPath: string): void {
     }
 
     try {
-      const commit = fetchSource(parseSource(entry.source), tmpDir);
+      const commit = await fetchSource(parseSource(entry.source), tmpDir);
       const files = fs.readdirSync(tmpDir);
-      const mdFile = files.find((f) => f.endsWith(".md"));
+      const mdFile = files.find((file) => file.endsWith(".md"));
       if (!mdFile) throw new Error("No markdown file found in fetched content");
 
       const rawBody = fs.readFileSync(path.join(tmpDir, mdFile), "utf8");
-      const pinnedSource = pinSpecifier(entry.source, commit);
+      const normalizedSource = commit
+        ? pinSpecifier(entry.source, commit)
+        : entry.source;
       const normalizedBody = normalizeExternalDoc(
         rawBody,
-        pinnedSource,
+        normalizedSource,
         entry.targets,
         entry.description,
       );
-      fs.writeFileSync(destFile, normalizedBody);
-      fs.writeFileSync(path.join(destDir, MARKER), "");
+      for (const outputPath of docOutputPaths) {
+        const destDir = resolvePath(path.join(projectRoot, outputPath));
+        fs.mkdirSync(destDir, { recursive: true });
+        fs.writeFileSync(path.join(destDir, `${name}.md`), normalizedBody);
+        fs.writeFileSync(path.join(destDir, MARKER), "");
+      }
       fs.rmSync(tmpDir, { recursive: true, force: true });
 
       manifest.docs.entries[name] = {
         ...entry,
-        source: pinnedSource,
+        source: normalizedSource,
       };
       changed = true;
 
       const entries = new Set(getRootGitignoreEntries());
-      entries.add(`${manifest.docs.path}/`);
+      for (const outputPath of docOutputPaths) {
+        entries.add(`${outputPath}/`);
+      }
       updateRootGitignore([...entries].sort());
 
       log.success(name);
@@ -150,7 +163,7 @@ function syncExternalDocs(manifestPath: string): void {
   if (changed) writeManifest(manifestPath, manifest);
 }
 
-export function syncCommand(): void {
+export async function syncCommand(): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
     log.error("No vulyk.json found.");
@@ -163,8 +176,8 @@ export function syncCommand(): void {
   const skills = Object.entries(manifest.skills.entries);
   const installedNames = new Set(Object.keys(manifest.skills.entries));
 
-  for (const targetPath of [manifest.skills.path]) {
-    const resolved = resolvePath(targetPath);
+  for (const outputPath of manifest.skills.outputPaths) {
+    const resolved = resolvePath(outputPath);
     if (!fs.existsSync(resolved)) continue;
     for (const entry of fs.readdirSync(resolved, { withFileTypes: true })) {
       if (
@@ -181,9 +194,9 @@ export function syncCommand(): void {
     }
   }
 
-  for (const [name, specifier] of skills) {
+  for (const [name, entry] of skills) {
     if (!isEnabled(manifest, name)) {
-      uninstall(name, [manifest.skills.path]);
+      uninstall(name, manifest.skills.outputPaths);
       log.dim(`  skipped ${name} (not in whitelist)`);
       continue;
     }
@@ -195,11 +208,14 @@ export function syncCommand(): void {
     }
 
     try {
-      const commit = fetchSource(parseSource(specifier), tmpDir);
-      install(name, tmpDir, [manifest.skills.path]);
-      const pinnedSpecifier = pinSpecifier(specifier, commit);
-      if (manifest.skills.entries[name] !== pinnedSpecifier) {
-        manifest.skills.entries[name] = pinnedSpecifier;
+      const commit = await fetchSource(parseSource(entry.source), tmpDir);
+      install(name, tmpDir, manifest.skills.outputPaths);
+      const normalizedSource = commit
+        ? pinSpecifier(entry.source, commit)
+        : entry.source;
+      const existingEntry = manifest.skills.entries[name];
+      if (existingEntry?.source !== normalizedSource) {
+        manifest.skills.entries[name] = { source: normalizedSource };
         changed = true;
       }
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -213,7 +229,7 @@ export function syncCommand(): void {
 
   if (Object.keys(manifest.docs.entries).length > 0) {
     log.info("\n  syncing external docs...");
-    syncExternalDocs(manifestPath);
+    await syncExternalDocs(manifestPath);
   }
 
   docsCommand({ also: manifest.docs.also });

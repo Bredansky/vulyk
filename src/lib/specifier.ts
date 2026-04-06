@@ -1,4 +1,10 @@
 export function stripPinnedRef(specifier: string): string {
+  if (specifier.startsWith("http://") || specifier.startsWith("https://")) {
+    if (!specifier.startsWith("https://github.com/")) {
+      return specifier;
+    }
+  }
+
   if (!specifier.startsWith("https://github.com/")) {
     return specifier.replace(/@[0-9a-f]{7,}$/i, "");
   }
@@ -11,6 +17,14 @@ export function stripPinnedRef(specifier: string): string {
 
 export function pinSpecifier(specifier: string, commit: string): string {
   const baseSpecifier = stripPinnedRef(specifier);
+  if (
+    (baseSpecifier.startsWith("http://") ||
+      baseSpecifier.startsWith("https://")) &&
+    !baseSpecifier.startsWith("https://github.com/")
+  ) {
+    return baseSpecifier;
+  }
+
   if (!baseSpecifier.startsWith("https://github.com/")) {
     return `${baseSpecifier}@${commit}`;
   }

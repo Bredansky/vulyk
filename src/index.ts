@@ -9,6 +9,7 @@ import { updateCommand } from "./commands/update.js";
 import { diffCommand } from "./commands/diff.js";
 import { docsCommand } from "./commands/docs.js";
 import { docAddCommand } from "./commands/doc-add.js";
+import { docsForCommand } from "./commands/docs-for.js";
 
 const program = new Command();
 
@@ -23,8 +24,8 @@ program
   .command("add <specifier>")
   .description("Add a skill (owner/repo/path or GitHub URL)")
   .option("-n, --name <name>", "override the skill name")
-  .action((specifier: string, opts: { name?: string }) => {
-    addCommand(specifier, { name: opts.name });
+  .action(async (specifier: string, opts: { name?: string }) => {
+    await addCommand(specifier, { name: opts.name });
   });
 
 program
@@ -35,7 +36,9 @@ program
 program
   .command("enable <name>")
   .description("Enable a skill")
-  .action(enableCommand);
+  .action(async (name: string) => {
+    await enableCommand(name);
+  });
 
 program
   .command("disable <name>")
@@ -58,8 +61,8 @@ program
 program
   .command("update [name]")
   .description("Update skills/docs to latest")
-  .action((name: string | undefined) => {
-    updateCommand(name);
+  .action(async (name: string | undefined) => {
+    await updateCommand(name);
   });
 
 program
@@ -88,8 +91,17 @@ program
   });
 
 program
+  .command("docs-for <file>")
+  .description("List tracked docs that apply to a specific file")
+  .action((file: string) => {
+    docsForCommand(file);
+  });
+
+program
   .command("sync")
   .description("Reinstall all enabled skills")
-  .action(syncCommand);
+  .action(async () => {
+    await syncCommand();
+  });
 
 program.parse();

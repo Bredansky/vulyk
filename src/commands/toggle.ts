@@ -6,7 +6,7 @@ import { install, uninstall } from "../lib/installer.js";
 import { parseSource, fetchSource } from "../lib/fetcher.js";
 import { log } from "../lib/log.js";
 
-export function enableCommand(name: string): void {
+export async function enableCommand(name: string): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
     log.error("No vulyk.json found.");
@@ -35,8 +35,8 @@ export function enableCommand(name: string): void {
   if (fs.existsSync(tmpDir)) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
-  fetchSource(parseSource(manifest.skills.entries[name]), tmpDir);
-  install(name, tmpDir, [manifest.skills.path]);
+  await fetchSource(parseSource(manifest.skills.entries[name].source), tmpDir);
+  install(name, tmpDir, manifest.skills.outputPaths);
   fs.rmSync(tmpDir, { recursive: true, force: true });
   log.success(`Enabled "${name}"`);
 }
@@ -59,6 +59,6 @@ export function disableCommand(name: string): void {
     : Object.keys(manifest.skills.entries).filter((n) => n !== name);
 
   writeManifest(manifestPath, manifest);
-  uninstall(name, [manifest.skills.path]);
+  uninstall(name, manifest.skills.outputPaths);
   log.success(`Disabled "${name}"`);
 }

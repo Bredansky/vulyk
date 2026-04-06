@@ -4,23 +4,37 @@ import * as os from "node:os";
 import { execFileSync, execSync } from "node:child_process";
 import { getRepoCachePath } from "./cache.js";
 
-export interface ResolvedSource {
+export interface GitResolvedSource {
+  kind: "git";
   repoUrl: string;
   subPath: string | null;
   ref: string;
 }
 
-// Parse skill specifier into ResolvedSource.
-// Formats:
-//   owner/repo/path/to/skill           -> HEAD of default branch
-//   owner/repo/path/to/skill@main      -> branch
-//   owner/repo/path/to/skill@v1.2.0    -> tag
-//   owner/repo/path/to/skill@abc123f   -> commit
-//   https://github.com/owner/repo/tree/branch/path
-//   https://github.com/owner/repo/blob/branch/path/SKILL.md  -> uses parent dir
-//   git@github.com:owner/repo.git
+export interface UrlResolvedSource {
+  kind: "url";
+  url: string;
+}
+
+export type ResolvedSource = GitResolvedSource | UrlResolvedSource;
+
+function isDirectUrl(specifier: string): boolean {
+  if (!specifier.startsWith("http://") && !specifier.startsWith("https://")) {
+    return false;
+  }
+
+  if (specifier.startsWith("https://github.com/")) {
+    return false;
+  }
+
+  return !specifier.endsWith(".git");
+}
+
 export function parseSource(specifier: string): ResolvedSource {
-  // Full GitHub tree/blob URL
+  if (isDirectUrl(specifier)) {
+    return { kind: "url", url: specifier };
+  }
+
   if (specifier.startsWith("https://github.com/")) {
     const atIdx = specifier.lastIndexOf("@");
     const pinnedRef =
@@ -36,52 +50,50 @@ export function parseSource(specifier: string): ResolvedSource {
       let subPath = parts.slice(4).join("/");
       if (subPath.endsWith("/SKILL.md")) {
         subPath = subPath.slice(0, -"/SKILL.md".length);
-      } else if (subPath === "SKILL.md") subPath = "";
+      } else if (subPath === "SKILL.md") {
+        subPath = "";
+      }
       return {
+        kind: "git",
         repoUrl,
         subPath: subPath || null,
         ref: pinnedRef ?? parts[3] ?? "HEAD",
       };
     }
-    return { repoUrl, subPath: null, ref: pinnedRef ?? "HEAD" };
+    return { kind: "git", repoUrl, subPath: null, ref: pinnedRef ?? "HEAD" };
   }
 
-  // Raw git URL
-  if (
-    specifier.startsWith("git@") ||
-    (specifier.startsWith("https://") && !specifier.includes("github.com"))
-  ) {
-    return { repoUrl: specifier, subPath: null, ref: "HEAD" };
+  if (specifier.startsWith("git@") || specifier.endsWith(".git")) {
+    return { kind: "git", repoUrl: specifier, subPath: null, ref: "HEAD" };
   }
 
-  // owner/repo/path@version
   const atIdx = specifier.lastIndexOf("@");
   const ref = atIdx > 0 ? specifier.slice(atIdx + 1) : "HEAD";
   const withoutRef = atIdx > 0 ? specifier.slice(0, atIdx) : specifier;
 
   const parts = withoutRef.split("/");
   if (parts.length < 2) {
-    throw new Error(`Invalid skill specifier: "${specifier}"`);
+    throw new Error(`Invalid source specifier: "${specifier}"`);
   }
 
   const owner = parts[0];
   const repo = parts[1];
   if (!owner || !repo) {
-    throw new Error(`Invalid skill specifier: "${specifier}"`);
+    throw new Error(`Invalid source specifier: "${specifier}"`);
   }
+
   const repoUrl = `https://github.com/${owner}/${repo}.git`;
   let subPath = parts.length > 2 ? parts.slice(2).join("/") : null;
   if (subPath?.endsWith("/SKILL.md")) {
     subPath = subPath.slice(0, -"/SKILL.md".length);
-  } else if (subPath === "SKILL.md") subPath = null;
+  } else if (subPath === "SKILL.md") {
+    subPath = null;
+  }
 
-  return { repoUrl, subPath, ref };
+  return { kind: "git", repoUrl, subPath, ref };
 }
 
-export function fetchSource(resolved: ResolvedSource, destDir: string): string {
-  const cacheDir = path.join(os.homedir(), ".vulyk", "cache");
-  fs.mkdirSync(cacheDir, { recursive: true });
-
+function fetchGitSource(resolved: GitResolvedSource, destDir: string): string {
   const repoCache = getRepoCachePath(resolved.repoUrl);
 
   if (!fs.existsSync(repoCache)) {
@@ -105,7 +117,6 @@ export function fetchSource(resolved: ResolvedSource, destDir: string): string {
     ? `${resolved.ref}:${resolved.subPath}`
     : resolved.ref;
 
-  // Check if subPath points to a single file (not a directory)
   if (resolved.subPath?.includes(".")) {
     try {
       const objectType = execSync(
@@ -127,8 +138,6 @@ export function fetchSource(resolved: ResolvedSource, destDir: string): string {
     }
   }
 
-  // Windows tar handling is inconsistent for drive-letter paths and stdin.
-  // Use a zip archive plus native PowerShell extraction there, and tar elsewhere.
   if (process.platform === "win32") {
     const archivePath = path.join(
       os.tmpdir(),
@@ -172,4 +181,85 @@ export function fetchSource(resolved: ResolvedSource, destDir: string): string {
   }
 
   return commit;
+}
+
+function inferFileNameFromUrl(url: string, contentType: string | null): string {
+  const pathname = new URL(url).pathname;
+  const baseName = path.basename(pathname);
+  if (baseName.includes(".")) {
+    return baseName;
+  }
+  if (contentType?.includes("markdown")) return "document.md";
+  if (contentType?.includes("zip")) return "archive.zip";
+  return "download.bin";
+}
+
+async function fetchUrlSource(
+  resolved: UrlResolvedSource,
+  destDir: string,
+): Promise<null> {
+  fs.mkdirSync(destDir, { recursive: true });
+
+  const response = await fetch(resolved.url);
+  if (!response.ok) {
+    throw new Error(`HTTP ${String(response.status)} for ${resolved.url}`);
+  }
+
+  const contentType = response.headers.get("content-type");
+  const fileName = inferFileNameFromUrl(resolved.url, contentType);
+  const outputPath = path.join(destDir, fileName);
+
+  if (contentType?.includes("markdown") || fileName.endsWith(".md")) {
+    fs.writeFileSync(outputPath, await response.text());
+    return null;
+  }
+
+  if (
+    contentType?.includes("zip") ||
+    fileName.endsWith(".zip") ||
+    fileName.endsWith(".tgz") ||
+    fileName.endsWith(".tar.gz") ||
+    fileName.endsWith(".tar")
+  ) {
+    const archivePath = outputPath;
+    fs.writeFileSync(archivePath, Buffer.from(await response.arrayBuffer()));
+
+    if (archivePath.endsWith(".zip")) {
+      execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-Command",
+          "& { param($archivePath, $destDir) Expand-Archive -LiteralPath $archivePath -DestinationPath $destDir -Force }",
+          archivePath,
+          destDir,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+    } else {
+      execFileSync("tar", ["-x", "-f", archivePath, "-C", destDir], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    }
+
+    fs.rmSync(archivePath, { force: true });
+    return null;
+  }
+
+  fs.writeFileSync(outputPath, Buffer.from(await response.arrayBuffer()));
+  return null;
+}
+
+export async function fetchSource(
+  resolved: ResolvedSource,
+  destDir: string,
+): Promise<string | null> {
+  const cacheDir = path.join(os.homedir(), ".vulyk", "cache");
+  fs.mkdirSync(cacheDir, { recursive: true });
+
+  if (resolved.kind === "git") {
+    return fetchGitSource(resolved, destDir);
+  }
+
+  return fetchUrlSource(resolved, destDir);
 }

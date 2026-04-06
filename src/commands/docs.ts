@@ -1,87 +1,19 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
 import { findManifest, readManifest } from "../lib/manifest.js";
 import {
   updateRootGitignore,
   getRootGitignoreEntries,
 } from "../lib/gitignore.js";
+import {
+  getLocalDocsDirs,
+  resolvePath,
+  scanDocs,
+  type DocFile,
+} from "../lib/docs.js";
 import { log } from "../lib/log.js";
 
-const FRONTMATTER_RE = /^---\r?\n(?<fm>[\s\S]*?)\r?\n---/;
 const AGENTS_FILE = "AGENTS.md";
-
-interface DocFile {
-  filePath: string;
-  paths: string[];
-  description: string;
-  title: string;
-  relativePath: string;
-}
-
-function parseFrontmatterField(frontmatter: string, field: string): string {
-  const match = new RegExp(`^${field}:\\s*(?<val>.+)$`, "m").exec(frontmatter);
-  return match?.groups?.val?.trim().replace(/^["']|["']$/g, "") ?? "";
-}
-
-function parseTitle(body: string): string {
-  const match = /^# (?<title>.+)$/m.exec(body);
-  return match?.groups?.title?.trim() ?? "";
-}
-
-function parsePaths(frontmatter: string): string[] {
-  const match = /^paths:\s*\n(?<items>(?:\s+-\s+.+\n?)+)/m.exec(frontmatter);
-  if (!match) return [];
-  return (match.groups?.items ?? "")
-    .split("\n")
-    .map((l) => l.replace(/^\s+-\s+["']?|["']?\s*$/g, "").trim())
-    .filter(Boolean);
-}
-
-function resolvePath(p: string): string {
-  return p.startsWith("~")
-    ? path.join(os.homedir(), p.slice(1))
-    : path.resolve(p);
-}
-
-function scanDocs(docsDir: string, relativeTo = docsDir): DocFile[] {
-  if (!fs.existsSync(docsDir)) return [];
-
-  const results: DocFile[] = [];
-
-  function walk(dir: string): void {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === "external") continue;
-        walk(fullPath);
-      } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        const content = fs.readFileSync(fullPath, "utf8");
-        const match = FRONTMATTER_RE.exec(content);
-        if (!match) continue;
-        const fm = match.groups?.fm ?? "";
-        const paths = parsePaths(fm);
-        if (paths.length === 0) continue;
-        const description = parseFrontmatterField(fm, "description");
-        const body = content.slice(match[0].length).trim();
-        const title = parseTitle(body);
-        const relativePath = path
-          .relative(relativeTo, fullPath)
-          .replace(/\\/g, "/");
-        results.push({
-          filePath: fullPath,
-          paths,
-          description,
-          title,
-          relativePath,
-        });
-      }
-    }
-  }
-
-  walk(docsDir);
-  return results;
-}
 
 function getTargetDir(resolved: string): string {
   return fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
@@ -93,19 +25,23 @@ export function docsCommand(opts: { also?: string[] }): void {
   const manifestPath = findManifest();
   const projectRoot = manifestPath ? path.dirname(manifestPath) : process.cwd();
   const manifest = manifestPath ? readManifest(manifestPath) : null;
-  const docsDir = path.join(projectRoot, "docs");
   const also = opts.also ?? manifest?.docs.also ?? [];
 
-  const localDocs = scanDocs(docsDir);
+  const localDocs = getLocalDocsDirs(projectRoot, manifest).flatMap((docsDir) =>
+    scanDocs(docsDir, projectRoot),
+  );
   const externalDocsDir = path.join(
     projectRoot,
-    manifest?.docs.path ?? "docs/external",
+    manifest?.docs.outputPaths[0] ?? "docs/external",
   );
-  const externalDocs = scanDocs(externalDocsDir, docsDir);
+  const externalDocs = scanDocs(externalDocsDir, projectRoot);
   const docs = [...localDocs, ...externalDocs];
 
   if (docs.length === 0) {
-    log.warn(`No docs with "paths" frontmatter found in ${docsDir}`);
+    const localPaths = getLocalDocsDirs(projectRoot, manifest)
+      .map((docsDir) => path.relative(projectRoot, docsDir))
+      .join(", ");
+    log.warn(`No docs with "paths" frontmatter found in ${localPaths}`);
     return;
   }
 
@@ -137,7 +73,7 @@ export function docsCommand(opts: { also?: string[] }): void {
       const lines: string[] = [];
       if (doc.title) lines.push(`# ${doc.title}`);
       if (doc.description) lines.push(`\n${doc.description}`);
-      lines.push(`\nFull documentation: docs/${doc.relativePath}`);
+      lines.push(`\nFull documentation: ${doc.relativePath}`);
       return lines.join("");
     });
 

@@ -13,5 +13,7 @@ export function initCommand(): void {
 
   initManifest(filePath);
   log.success(`Created ${MANIFEST_FILE}`);
-  log.dim(`  Set the install path with: "skills": { "path": "skills" }`);
+  log.dim(
+    `  Set skill output paths with: "skills": { "outputPaths": ["skills"] }`,
+  );
 }

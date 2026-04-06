@@ -17,13 +17,13 @@ export function listCommand(): void {
   if (skills.length === 0) {
     log.dim("  none");
   } else {
-    for (const [name, specifier] of skills) {
+    for (const [name, entry] of skills) {
       const status = isEnabled(manifest, name)
-        ? color.green("✓")
-        : color.red("✗");
-      const atIdx = specifier.lastIndexOf("@");
+        ? color.green("+")
+        : color.red("-");
+      const atIdx = entry.source.lastIndexOf("@");
       const version =
-        atIdx > 0 ? color.dim(specifier.slice(atIdx)) : color.dim("@HEAD");
+        atIdx > 0 ? color.dim(entry.source.slice(atIdx)) : color.dim("@HEAD");
       log.print(`  ${status} ${name} ${version}`);
     }
   }
@@ -35,20 +35,32 @@ export function listCommand(): void {
       const version =
         atIdx > 0 ? color.dim(entry.source.slice(atIdx)) : color.dim("@HEAD");
       log.print(
-        `  ${color.green("✓")} ${name} ${version} ${color.dim(`→ ${entry.targets.join(", ")}`)}`,
+        `  ${color.green("+")} ${name} ${version} ${color.dim(`-> ${entry.targets.join(", ")}`)}`,
       );
     }
   }
 
   log.blue("\nPaths:");
-  if (!manifest.skills.path && !manifest.docs.path) {
+  if (
+    manifest.skills.outputPaths.length === 0 &&
+    manifest.docs.outputPaths.length === 0
+  ) {
     log.dim("  none");
   } else {
-    if (manifest.skills.path) {
-      log.print(`  ${color.dim("skills:")} ${manifest.skills.path}`);
+    if (manifest.skills.outputPaths.length > 0) {
+      log.print(
+        `  ${color.dim("skill outputs:")} ${manifest.skills.outputPaths.join(", ")}`,
+      );
     }
-    if (manifest.docs.path) {
-      log.print(`  ${color.dim("docs:")} ${manifest.docs.path}`);
+    if (manifest.docs.localPaths.length > 0) {
+      log.print(
+        `  ${color.dim("local docs:")} ${manifest.docs.localPaths.join(", ")}`,
+      );
+    }
+    if (manifest.docs.outputPaths.length > 0) {
+      log.print(
+        `  ${color.dim("doc outputs:")} ${manifest.docs.outputPaths.join(", ")}`,
+      );
     }
   }
   log.print("");

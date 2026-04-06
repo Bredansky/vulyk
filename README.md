@@ -2,7 +2,7 @@
 
 > :bee: vulyk means _hive_ in Ukrainian
 
-`vulyk` is a lightweight, spec-driven package manager for AI agent skills, external agent docs, and generated `AGENTS.md` files. It installs skills from GitHub, pins them to immutable commit URLs, syncs them across clones, and keeps agent context reproducible.
+`vulyk` is a lightweight, spec-driven package manager for AI agent skills, external agent docs, and generated `AGENTS.md` files. It installs skills from versioned sources or direct URLs, syncs them across clones, and keeps agent context reproducible.
 
 ## :package: Install
 
@@ -30,7 +30,7 @@ Creates a `vulyk.json` in the current directory.
 
 ### `vulyk add <specifier>`
 
-Adds a skill from GitHub, installs it into `skills.path`, and pins the commit in `skills.entries`.
+Adds a skill from a configured source, installs it into every `skills.outputPaths` entry, and stores the source in `skills.entries`.
 
 ```sh
 vulyk add owner/repo/path/to/skill
@@ -59,7 +59,7 @@ Shows what would change if you ran `update`.
 
 ### `vulyk update [name]`
 
-Updates pinned skills and docs to the latest commit reachable from their configured ref.
+Updates git-backed skills and docs to the latest commit reachable from their configured ref. Direct URL sources are refreshed in place.
 
 ### `vulyk doc-add <url>`
 
@@ -81,6 +81,21 @@ vulyk docs --also CLAUDE.md
 ```
 
 By default it uses `docs.also` from `vulyk.json`, so alias files are reproducible without passing flags every time.
+
+### `vulyk docs-for <file>`
+
+Prints JSON for tracked docs that apply to a specific file. This is useful when a skill or review workflow wants to answer "which docs should I compare this file against?"
+
+```sh
+vulyk docs-for .claude/hooks/context-statusline.ts
+vulyk docs-for src/features/editor/poster.tsx
+```
+
+It matches:
+
+- local docs with frontmatter `paths`
+- external docs declared in `docs.entries`
+- exact file targets and directory targets
 
 ### `vulyk sync`
 
@@ -106,14 +121,17 @@ Generated `AGENTS.md` includes the doc title, description, and a pointer to the 
 ```json
 {
   "skills": {
-    "path": "skills",
+    "outputPaths": ["skills"],
     "enabled": ["visual-explainer"],
     "entries": {
-      "visual-explainer": "nicobailon/visual-explainer/plugins/visual-explainer@9a97a58..."
+      "visual-explainer": {
+        "source": "nicobailon/visual-explainer/plugins/visual-explainer@9a97a58..."
+      }
     }
   },
   "docs": {
-    "path": "docs/external",
+    "localPaths": ["docs"],
+    "outputPaths": ["docs/external"],
     "also": ["CLAUDE.md"],
     "entries": {
       "project-structure": {
@@ -126,14 +144,15 @@ Generated `AGENTS.md` includes the doc title, description, and a pointer to the 
 }
 ```
 
-| Field            | Description                                     |
-| ---------------- | ----------------------------------------------- |
-| `skills.path`    | Directory where managed skills are installed    |
-| `skills.enabled` | Optional whitelist of enabled skills            |
-| `skills.entries` | Installed skills pinned to a commit             |
-| `docs.path`      | Directory for synced external docs              |
-| `docs.also`      | Alias files to regenerate alongside `AGENTS.md` |
-| `docs.entries`   | External docs pinned to a commit                |
+| Field                   | Description                                     |
+| ----------------------- | ----------------------------------------------- |
+| `skills.outputPaths`    | Directories where managed skills are installed  |
+| `skills.enabled`        | Optional whitelist of enabled skills            |
+| `skills.entries.<name>` | Skill source metadata                           |
+| `docs.localPaths`       | Local doc roots scanned for frontmatter paths   |
+| `docs.outputPaths`      | Directories for synced external docs            |
+| `docs.also`             | Alias files to regenerate alongside `AGENTS.md` |
+| `docs.entries`          | External docs plus target metadata              |
 
 ## :link: Specifier format
 
@@ -145,8 +164,10 @@ Generated `AGENTS.md` includes the doc title, description, and a pointer to the 
 | `https://github.com/owner/repo/tree/<commit>/...` | An immutable GitHub tree   |
 | `https://github.com/owner/repo/blob/<commit>/...` | An immutable GitHub blob   |
 | `https://github.com/owner/repo/tree/branch/path`  | A GitHub URL               |
+| `https://example.com/file.md`                     | A direct markdown URL      |
+| `https://example.com/archive.zip`                 | A direct archive URL       |
 
-Pinned GitHub URLs are rewritten to real immutable `tree/<commit>` or `blob/<commit>` links during `add`, `sync`, and `update`, so manifest entries stay clickable.
+Git-backed sources are pinned to commits during `add`, `sync`, and `update`. Direct URLs remain unchanged and are refreshed as-is.
 
 ## :broom: How managed files work
 

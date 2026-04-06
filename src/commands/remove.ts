@@ -15,7 +15,7 @@ export function removeCommand(name: string): void {
     process.exit(1);
   }
 
-  uninstall(name, [manifest.skills.path]);
+  uninstall(name, manifest.skills.outputPaths);
   const { [name]: _, ...remainingSkills } = manifest.skills.entries;
   manifest.skills.entries = remainingSkills;
   writeManifest(manifestPath, manifest);
