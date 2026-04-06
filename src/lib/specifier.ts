@@ -1,32 +1,25 @@
+function isCommitLike(value: string): boolean {
+  return /^[0-9a-f]{7,40}$/i.test(value);
+}
+
 export function stripPinnedRef(specifier: string): string {
-  if (specifier.startsWith("http://") || specifier.startsWith("https://")) {
-    if (!specifier.startsWith("https://github.com/")) {
-      return specifier;
-    }
-  }
-
   if (!specifier.startsWith("https://github.com/")) {
-    return specifier.replace(/@[0-9a-f]{7,}$/i, "");
+    return specifier;
   }
 
-  const atIdx = specifier.lastIndexOf("@");
-  return atIdx > specifier.indexOf(".com/")
-    ? specifier.slice(0, atIdx)
-    : specifier;
+  const url = new URL(specifier);
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (parts.length >= 5 && (parts[2] === "blob" || parts[2] === "tree")) {
+    parts[3] = isCommitLike(parts[3] ?? "") ? "HEAD" : (parts[3] ?? "HEAD");
+    url.pathname = `/${parts.join("/")}`;
+  }
+  return url.toString();
 }
 
 export function pinSpecifier(specifier: string, commit: string): string {
   const baseSpecifier = stripPinnedRef(specifier);
-  if (
-    (baseSpecifier.startsWith("http://") ||
-      baseSpecifier.startsWith("https://")) &&
-    !baseSpecifier.startsWith("https://github.com/")
-  ) {
-    return baseSpecifier;
-  }
-
   if (!baseSpecifier.startsWith("https://github.com/")) {
-    return `${baseSpecifier}@${commit}`;
+    return baseSpecifier;
   }
 
   const url = new URL(baseSpecifier);
@@ -37,5 +30,7 @@ export function pinSpecifier(specifier: string, commit: string): string {
     return url.toString();
   }
 
-  return `${baseSpecifier}@${commit}`;
+  throw new Error(
+    `Cannot pin unsupported GitHub specifier "${specifier}". Use a blob/tree URL with a path.`,
+  );
 }

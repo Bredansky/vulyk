@@ -1,6 +1,8 @@
+import * as path from "node:path";
 import { findManifest, readManifest } from "../lib/manifest.js";
 import { isEnabled } from "../lib/whitelist.js";
 import { color, log } from "../lib/log.js";
+import { isRemoteDocSource, validateDocsManifest } from "../lib/docs.js";
 
 export function listCommand(): void {
   const manifestPath = findManifest();
@@ -10,6 +12,8 @@ export function listCommand(): void {
   }
 
   const manifest = readManifest(manifestPath);
+  const projectRoot = path.dirname(manifestPath);
+  validateDocsManifest(manifest, projectRoot);
   const skills = Object.entries(manifest.skills.entries);
   const docs = Object.entries(manifest.docs.entries);
 
@@ -21,21 +25,15 @@ export function listCommand(): void {
       const status = isEnabled(manifest, name)
         ? color.green("+")
         : color.red("-");
-      const atIdx = entry.source.lastIndexOf("@");
-      const version =
-        atIdx > 0 ? color.dim(entry.source.slice(atIdx)) : color.dim("@HEAD");
-      log.print(`  ${status} ${name} ${version}`);
+      log.print(`  ${status} ${name} ${color.dim(entry.source)}`);
     }
   }
 
   if (docs.length > 0) {
-    log.blue("\nExternal Docs:");
+    log.blue("\nDocs:");
     for (const [name, entry] of docs) {
-      const atIdx = entry.source.lastIndexOf("@");
-      const version =
-        atIdx > 0 ? color.dim(entry.source.slice(atIdx)) : color.dim("@HEAD");
       log.print(
-        `  ${color.green("+")} ${name} ${version} ${color.dim(`-> ${entry.targets.join(", ")}`)}`,
+        `  ${color.green("+")} ${name} ${color.dim(isRemoteDocSource(projectRoot, entry.source) ? "external" : "local")} ${color.dim(entry.source)} ${color.dim(`-> ${entry.targets.join(", ")}`)}`,
       );
     }
   }
@@ -43,7 +41,7 @@ export function listCommand(): void {
   log.blue("\nPaths:");
   if (
     manifest.skills.outputPaths.length === 0 &&
-    manifest.docs.outputPaths.length === 0
+    Object.keys(manifest.docs.rules).length === 0
   ) {
     log.dim("  none");
   } else {
@@ -52,14 +50,9 @@ export function listCommand(): void {
         `  ${color.dim("skill outputs:")} ${manifest.skills.outputPaths.join(", ")}`,
       );
     }
-    if (manifest.docs.localPaths.length > 0) {
+    if (Object.keys(manifest.docs.rules).length > 0) {
       log.print(
-        `  ${color.dim("local docs:")} ${manifest.docs.localPaths.join(", ")}`,
-      );
-    }
-    if (manifest.docs.outputPaths.length > 0) {
-      log.print(
-        `  ${color.dim("doc outputs:")} ${manifest.docs.outputPaths.join(", ")}`,
+        `  ${color.dim("doc rules:")} ${Object.keys(manifest.docs.rules).join(", ")}`,
       );
     }
   }

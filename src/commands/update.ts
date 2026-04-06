@@ -12,40 +12,11 @@ import { install, resolvePath } from "../lib/installer.js";
 import { color, log } from "../lib/log.js";
 import { getRepoCachePath } from "../lib/cache.js";
 import { pinSpecifier, stripPinnedRef } from "../lib/specifier.js";
-
-const MARKER = ".vulyk";
-const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
-
-function quoteYaml(value: string): string {
-  return JSON.stringify(value);
-}
-
-function buildDocFrontmatter(
-  source: string,
-  targets: string[],
-  description?: string,
-): string {
-  const lines = ["---", "paths:"];
-  for (const target of targets) {
-    lines.push(`  - ${quoteYaml(target)}`);
-  }
-  if (description) {
-    lines.push(`description: ${quoteYaml(description)}`);
-  }
-  lines.push(`source: ${quoteYaml(source)}`);
-  lines.push("---", "");
-  return lines.join("\n");
-}
-
-function normalizeExternalDoc(
-  body: string,
-  source: string,
-  targets: string[],
-  description?: string,
-): string {
-  const normalizedBody = body.replace(FRONTMATTER_RE, "").trimStart();
-  return `${buildDocFrontmatter(source, targets, description)}${normalizedBody}`;
-}
+import {
+  isRemoteDocSource,
+  resolveRuleForEntry,
+  validateDocsManifest,
+} from "../lib/docs.js";
 
 function fetchLatest(repoCache: string, ref: string): string {
   try {
@@ -77,6 +48,8 @@ export async function updateCommand(name?: string): Promise<void> {
   }
 
   const manifest = readManifest(manifestPath);
+  const projectRoot = path.dirname(manifestPath);
+  validateDocsManifest(manifest, projectRoot);
 
   const skills = name
     ? Object.entries(manifest.skills.entries).filter(
@@ -158,6 +131,11 @@ export async function updateCommand(name?: string): Promise<void> {
   if (docs.length > 0) log.print(color.dim("\nDocs:"));
 
   for (const [entryName, entry] of docs) {
+    if (!isRemoteDocSource(projectRoot, entry.source)) {
+      log.print(`  ${color.dim(`${entryName} is local; nothing to update`)}`);
+      continue;
+    }
+
     const resolved = parseSource(entry.source);
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", `doc-${entryName}`);
     if (fs.existsSync(tmpDir)) {
@@ -201,32 +179,20 @@ export async function updateCommand(name?: string): Promise<void> {
         await fetchSource(resolved, tmpDir);
       }
 
-      const docOutputPaths =
-        manifest.docs.outputPaths.length > 0
-          ? manifest.docs.outputPaths
-          : ["docs/external"];
       const mdFile = fs
         .readdirSync(tmpDir)
         .find((file) => file.endsWith(".md"));
       if (!mdFile) throw new Error("No markdown file found");
 
       const rawBody = fs.readFileSync(path.join(tmpDir, mdFile), "utf8");
-      const normalizedBody = normalizeExternalDoc(
-        rawBody,
-        normalizedSource,
-        entry.targets,
-        entry.description,
-      );
-      for (const outputPath of docOutputPaths) {
-        const destDir = resolvePath(
-          path.join(path.dirname(manifestPath), outputPath),
-        );
+      const rule = resolveRuleForEntry(manifest, projectRoot, entry);
+      for (const outputPath of rule.config.outputPaths) {
+        const destDir = resolvePath(path.join(projectRoot, outputPath));
         fs.mkdirSync(destDir, { recursive: true });
-        fs.writeFileSync(path.join(destDir, `${entryName}.md`), normalizedBody);
-        fs.writeFileSync(path.join(destDir, MARKER), "");
+        fs.writeFileSync(path.join(destDir, `${entryName}.md`), rawBody);
       }
-      fs.rmSync(tmpDir, { recursive: true, force: true });
 
+      fs.rmSync(tmpDir, { recursive: true, force: true });
       manifest.docs.entries[entryName] = {
         ...entry,
         source: normalizedSource,

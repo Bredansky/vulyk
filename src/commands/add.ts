@@ -53,6 +53,13 @@ export async function addCommand(
     process.exit(1);
   }
 
+  if (!specifier.startsWith("https://github.com/")) {
+    log.error(
+      "Skills must use a full GitHub blob/tree URL. Shorthand repo specifiers are no longer supported.",
+    );
+    process.exit(1);
+  }
+
   const name =
     opts.name ??
     specifier.split("/").filter(Boolean).pop()?.replace(/@.*$/, "") ??

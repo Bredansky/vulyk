@@ -20,18 +20,14 @@ export function docAddCommand(specifier: string, opts: DocAddOptions): void {
       "No targets specified. Use --targets to specify where this doc applies.",
     );
     log.dim(
-      `  Example: vulyk doc-add nicobailon/visual-explainer/docs/usage.md --targets "src"`,
+      `  Example: vulyk doc-add https://github.com/owner/repo/blob/main/docs/usage.md --targets "src"`,
     );
     process.exit(1);
   }
 
   const name =
-    specifier
-      .split("/")
-      .filter(Boolean)
-      .pop()
-      ?.replace(/\.md$/, "")
-      .replace(/@.*$/, "") ?? specifier;
+    specifier.split("/").filter(Boolean).pop()?.replace(/\.md$/, "") ??
+    specifier;
 
   manifest.docs.entries[name] = {
     source: specifier,
@@ -40,5 +36,7 @@ export function docAddCommand(specifier: string, opts: DocAddOptions): void {
   };
 
   writeManifest(manifestPath, manifest);
-  log.success(`Added external doc "${name}" — run \`vulyk sync\` to fetch it`);
+  log.success(
+    `Added doc "${name}" - run \`vulyk sync\` to fetch remote content if needed`,
+  );
 }

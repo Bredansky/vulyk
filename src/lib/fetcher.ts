@@ -36,17 +36,13 @@ export function parseSource(specifier: string): ResolvedSource {
   }
 
   if (specifier.startsWith("https://github.com/")) {
-    const atIdx = specifier.lastIndexOf("@");
-    const pinnedRef =
-      atIdx > specifier.indexOf(".com/") ? specifier.slice(atIdx + 1) : null;
-    const cleanSpecifier = pinnedRef ? specifier.slice(0, atIdx) : specifier;
-    const url = new URL(cleanSpecifier);
+    const url = new URL(specifier);
     const parts = url.pathname.split("/").filter(Boolean);
     const owner = parts[0];
     const repo = parts[1];
     if (!owner || !repo) throw new Error(`Invalid GitHub URL: "${specifier}"`);
     const repoUrl = `https://github.com/${owner}/${repo}.git`;
-    if (parts.length > 4) {
+    if (parts.length >= 5 && (parts[2] === "blob" || parts[2] === "tree")) {
       let subPath = parts.slice(4).join("/");
       if (subPath.endsWith("/SKILL.md")) {
         subPath = subPath.slice(0, -"/SKILL.md".length);
@@ -57,40 +53,17 @@ export function parseSource(specifier: string): ResolvedSource {
         kind: "git",
         repoUrl,
         subPath: subPath || null,
-        ref: pinnedRef ?? parts[3] ?? "HEAD",
+        ref: parts[3] ?? "HEAD",
       };
     }
-    return { kind: "git", repoUrl, subPath: null, ref: pinnedRef ?? "HEAD" };
+    throw new Error(
+      `Unsupported GitHub source: "${specifier}". Use a blob/tree URL with a path.`,
+    );
   }
 
-  if (specifier.startsWith("git@") || specifier.endsWith(".git")) {
-    return { kind: "git", repoUrl: specifier, subPath: null, ref: "HEAD" };
-  }
-
-  const atIdx = specifier.lastIndexOf("@");
-  const ref = atIdx > 0 ? specifier.slice(atIdx + 1) : "HEAD";
-  const withoutRef = atIdx > 0 ? specifier.slice(0, atIdx) : specifier;
-
-  const parts = withoutRef.split("/");
-  if (parts.length < 2) {
-    throw new Error(`Invalid source specifier: "${specifier}"`);
-  }
-
-  const owner = parts[0];
-  const repo = parts[1];
-  if (!owner || !repo) {
-    throw new Error(`Invalid source specifier: "${specifier}"`);
-  }
-
-  const repoUrl = `https://github.com/${owner}/${repo}.git`;
-  let subPath = parts.length > 2 ? parts.slice(2).join("/") : null;
-  if (subPath?.endsWith("/SKILL.md")) {
-    subPath = subPath.slice(0, -"/SKILL.md".length);
-  } else if (subPath === "SKILL.md") {
-    subPath = null;
-  }
-
-  return { kind: "git", repoUrl, subPath, ref };
+  throw new Error(
+    `Unsupported source "${specifier}". Use a direct URL or a full GitHub blob/tree URL.`,
+  );
 }
 
 function fetchGitSource(resolved: GitResolvedSource, destDir: string): string {

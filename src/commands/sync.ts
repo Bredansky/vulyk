@@ -11,36 +11,17 @@ import {
 } from "../lib/installer.js";
 import { isEnabled } from "../lib/whitelist.js";
 import {
-  updateRootGitignore,
   getRootGitignoreEntries,
+  updateRootGitignore,
 } from "../lib/gitignore.js";
 import { log } from "../lib/log.js";
 import { pinSpecifier } from "../lib/specifier.js";
+import {
+  isRemoteDocSource,
+  resolveRuleForEntry,
+  validateDocsManifest,
+} from "../lib/docs.js";
 import { docsCommand } from "./docs.js";
-
-const MARKER = ".vulyk";
-const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
-
-function quoteYaml(value: string): string {
-  return JSON.stringify(value);
-}
-
-function buildDocFrontmatter(
-  source: string,
-  targets: string[],
-  description?: string,
-): string {
-  const lines = ["---", "paths:"];
-  for (const target of targets) {
-    lines.push(`  - ${quoteYaml(target)}`);
-  }
-  if (description) {
-    lines.push(`description: ${quoteYaml(description)}`);
-  }
-  lines.push(`source: ${quoteYaml(source)}`);
-  lines.push("---", "");
-  return lines.join("\n");
-}
 
 function cleanupStaleManagedSkillPaths(manifestPath: string): void {
   const manifest = readManifest(manifestPath);
@@ -55,11 +36,11 @@ function cleanupStaleManagedSkillPaths(manifestPath: string): void {
   const staleSkillEntries = managedEntries.filter((entry) => {
     if (!entry.endsWith("/")) return false;
     if (entry.startsWith("**/")) return false;
-    if (
-      manifest.docs.outputPaths.some((outputPath) => entry === `${outputPath}/`)
-    ) {
-      return false;
-    }
+    const normalizedEntry = entry.replace(/\\/g, "/");
+    const isSkillPath = manifest.skills.outputPaths.some((outputPath) =>
+      normalizedEntry.startsWith(`${outputPath.replace(/\\/g, "/")}/`),
+    );
+    if (!isSkillPath) return false;
     return !expectedSkillEntries.has(entry);
   });
 
@@ -86,27 +67,16 @@ function cleanupStaleManagedSkillPaths(manifestPath: string): void {
   );
 }
 
-function normalizeExternalDoc(
-  body: string,
-  source: string,
-  targets: string[],
-  description?: string,
-): string {
-  const normalizedBody = body.replace(FRONTMATTER_RE, "").trimStart();
-  return `${buildDocFrontmatter(source, targets, description)}${normalizedBody}`;
-}
-
 async function syncExternalDocs(manifestPath: string): Promise<void> {
   const manifest = readManifest(manifestPath);
-  const docEntries = Object.entries(manifest.docs.entries);
+  const docEntries = Object.entries(manifest.docs.entries).filter(([, entry]) =>
+    isRemoteDocSource(path.dirname(manifestPath), entry.source),
+  );
   if (docEntries.length === 0) return;
 
   const projectRoot = path.dirname(manifestPath);
+  validateDocsManifest(manifest, projectRoot);
   let changed = false;
-  const docOutputPaths =
-    manifest.docs.outputPaths.length > 0
-      ? manifest.docs.outputPaths
-      : ["docs/external"];
 
   for (const [name, entry] of docEntries) {
     log.info(`  syncing doc ${name}...`);
@@ -118,40 +88,29 @@ async function syncExternalDocs(manifestPath: string): Promise<void> {
 
     try {
       const commit = await fetchSource(parseSource(entry.source), tmpDir);
-      const files = fs.readdirSync(tmpDir);
-      const mdFile = files.find((file) => file.endsWith(".md"));
+      const mdFile = fs
+        .readdirSync(tmpDir)
+        .find((file) => file.endsWith(".md"));
       if (!mdFile) throw new Error("No markdown file found in fetched content");
 
       const rawBody = fs.readFileSync(path.join(tmpDir, mdFile), "utf8");
       const normalizedSource = commit
         ? pinSpecifier(entry.source, commit)
         : entry.source;
-      const normalizedBody = normalizeExternalDoc(
-        rawBody,
-        normalizedSource,
-        entry.targets,
-        entry.description,
-      );
-      for (const outputPath of docOutputPaths) {
+      const rule = resolveRuleForEntry(manifest, projectRoot, entry);
+
+      for (const outputPath of rule.config.outputPaths) {
         const destDir = resolvePath(path.join(projectRoot, outputPath));
         fs.mkdirSync(destDir, { recursive: true });
-        fs.writeFileSync(path.join(destDir, `${name}.md`), normalizedBody);
-        fs.writeFileSync(path.join(destDir, MARKER), "");
+        fs.writeFileSync(path.join(destDir, `${name}.md`), rawBody);
       }
-      fs.rmSync(tmpDir, { recursive: true, force: true });
 
+      fs.rmSync(tmpDir, { recursive: true, force: true });
       manifest.docs.entries[name] = {
         ...entry,
         source: normalizedSource,
       };
       changed = true;
-
-      const entries = new Set(getRootGitignoreEntries());
-      for (const outputPath of docOutputPaths) {
-        entries.add(`${outputPath}/`);
-      }
-      updateRootGitignore([...entries].sort());
-
       log.success(name);
     } catch (err) {
       log.error(
@@ -171,6 +130,7 @@ export async function syncCommand(): Promise<void> {
   }
 
   const manifest = readManifest(manifestPath);
+  validateDocsManifest(manifest, path.dirname(manifestPath));
   let changed = false;
   cleanupStaleManagedSkillPaths(manifestPath);
   const skills = Object.entries(manifest.skills.entries);
@@ -232,7 +192,6 @@ export async function syncCommand(): Promise<void> {
     await syncExternalDocs(manifestPath);
   }
 
-  docsCommand({ also: manifest.docs.also });
-
+  docsCommand({});
   log.success("Sync complete");
 }

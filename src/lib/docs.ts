@@ -1,15 +1,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Manifest } from "../types.js";
+import type { DocEntry, DocRule, Manifest } from "../types.js";
 import { findManifest, readManifest } from "./manifest.js";
-
-const FRONTMATTER_RE = /^---\r?\n(?<fm>[\s\S]*?)\r?\n---/;
 
 export interface DocFile {
   filePath: string;
-  paths: string[];
-  description: string;
   title: string;
   relativePath: string;
 }
@@ -29,29 +25,28 @@ export interface DocTargetMatch {
   kind: "directory" | "file" | "glob";
 }
 
+export interface ResolvedDocRule {
+  name: string;
+  config: DocRule;
+}
+
+const DEFAULT_DOC_RULE_NAME = "__default__";
+const DEFAULT_DOC_RULE: DocRule = {
+  match: [],
+  outputPaths: ["docs/external"],
+  also: [],
+  gitignoreGenerated: true,
+};
+
 interface MatchSortKey {
   depth: number;
   exact: boolean;
   target: string;
 }
 
-function parseFrontmatterField(frontmatter: string, field: string): string {
-  const match = new RegExp(`^${field}:\\s*(?<val>.+)$`, "m").exec(frontmatter);
-  return match?.groups?.val?.trim().replace(/^["']|["']$/g, "") ?? "";
-}
-
 function parseTitle(body: string): string {
   const match = /^# (?<title>.+)$/m.exec(body);
   return match?.groups?.title?.trim() ?? "";
-}
-
-function parsePaths(frontmatter: string): string[] {
-  const match = /^paths:\s*\n(?<items>(?:\s+-\s+.+\n?)+)/m.exec(frontmatter);
-  if (!match) return [];
-  return (match.groups?.items ?? "")
-    .split("\n")
-    .map((line) => line.replace(/^\s+-\s+["']?|["']?\s*$/g, "").trim())
-    .filter(Boolean);
 }
 
 export function resolvePath(value: string): string {
@@ -60,65 +55,59 @@ export function resolvePath(value: string): string {
     : path.resolve(value);
 }
 
-export function scanDocs(docsDir: string, relativeTo = docsDir): DocFile[] {
-  if (!fs.existsSync(docsDir)) return [];
-
-  const results: DocFile[] = [];
-
-  function walk(dir: string): void {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === "external") continue;
-        walk(fullPath);
-        continue;
-      }
-
-      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
-
-      const content = fs.readFileSync(fullPath, "utf8");
-      const match = FRONTMATTER_RE.exec(content);
-      if (!match) continue;
-      const frontmatter = match.groups?.fm ?? "";
-      const paths = parsePaths(frontmatter);
-      if (paths.length === 0) continue;
-
-      const description = parseFrontmatterField(frontmatter, "description");
-      const body = content.slice(match[0].length).trim();
-      const title = parseTitle(body);
-      const relativePath = path
-        .relative(relativeTo, fullPath)
-        .replace(/\\/g, "/");
-
-      results.push({
-        filePath: fullPath,
-        paths,
-        description,
-        title,
-        relativePath,
-      });
-    }
-  }
-
-  walk(docsDir);
-  return results;
-}
-
-export function getLocalDocsDirs(
-  projectRoot: string,
-  manifest?: Manifest | null,
-): string[] {
-  return (manifest?.docs.localPaths ?? ["docs"]).map((docsPath) =>
-    path.join(projectRoot, docsPath),
-  );
-}
-
 function normalizeRelative(projectRoot: string, value: string): string {
   return path.relative(projectRoot, value).replace(/\\/g, "/");
 }
 
 function normalizeTarget(target: string): string {
   return target.replace(/\\/g, "/").replace(/[\\/]$/, "");
+}
+
+function isLocalDocSource(projectRoot: string, source: string): boolean {
+  const resolvedSource = path.resolve(projectRoot, source);
+  return fs.existsSync(resolvedSource);
+}
+
+export function isRemoteDocSource(
+  projectRoot: string,
+  source: string,
+): boolean {
+  return !isLocalDocSource(projectRoot, source);
+}
+
+function getPatternBase(pattern: string): string {
+  return normalizeTarget(pattern.split("*")[0] ?? pattern);
+}
+
+function matchPathPattern(inputPath: string, pattern: string): boolean {
+  const normalizedInput = normalizeTarget(inputPath);
+  const normalizedPattern = normalizeTarget(pattern);
+
+  if (normalizedPattern === "." || normalizedPattern === "") {
+    return true;
+  }
+
+  if (normalizedPattern.includes("*")) {
+    const base = getPatternBase(normalizedPattern);
+    return normalizedInput === base || normalizedInput.startsWith(`${base}/`);
+  }
+
+  return (
+    normalizedInput === normalizedPattern ||
+    normalizedInput.startsWith(`${normalizedPattern}/`)
+  );
+}
+
+function matchRulePattern(target: string, pattern: string): boolean {
+  const normalizedTarget = normalizeTarget(target);
+  const normalizedPattern = normalizeTarget(pattern);
+
+  if (normalizedPattern.includes("*")) {
+    const base = getPatternBase(normalizedPattern);
+    return normalizedTarget === base || normalizedTarget.startsWith(`${base}/`);
+  }
+
+  return normalizedTarget === normalizedPattern;
 }
 
 function getTargetKind(
@@ -138,7 +127,7 @@ function getTargetKind(
   return "file";
 }
 
-function matchTarget(
+export function matchTarget(
   projectRoot: string,
   filePath: string,
   target: string,
@@ -147,34 +136,7 @@ function matchTarget(
     projectRoot,
     path.resolve(projectRoot, filePath),
   );
-  const wildcardBase = target.split("*")[0]?.replace(/[\\/]$/, "") ?? target;
-
-  if (target.includes("*")) {
-    const normalizedBase = wildcardBase.replace(/\\/g, "/");
-    return (
-      normalizedFile === normalizedBase ||
-      normalizedFile.startsWith(`${normalizedBase}/`)
-    );
-  }
-
-  const resolvedTarget = path.resolve(projectRoot, target);
-  const normalizedTarget = normalizeRelative(projectRoot, resolvedTarget);
-
-  if (!fs.existsSync(resolvedTarget)) {
-    return (
-      normalizedFile === normalizedTarget ||
-      normalizedFile.startsWith(`${normalizedTarget}/`)
-    );
-  }
-
-  if (fs.statSync(resolvedTarget).isDirectory()) {
-    return (
-      normalizedFile === normalizedTarget ||
-      normalizedFile.startsWith(`${normalizedTarget}/`)
-    );
-  }
-
-  return normalizedFile === normalizedTarget;
+  return matchPathPattern(normalizedFile, target);
 }
 
 function getMatchSortKey(
@@ -225,6 +187,132 @@ function compareMatchSortKey(left: MatchSortKey, right: MatchSortKey): number {
   return left.target.localeCompare(right.target);
 }
 
+export function getDocTitle(filePath: string, relativeTo?: string): DocFile {
+  const content = fs.readFileSync(filePath, "utf8");
+  return {
+    filePath,
+    title: parseTitle(content),
+    relativePath: path
+      .relative(relativeTo ?? path.dirname(filePath), filePath)
+      .replace(/\\/g, "/"),
+  };
+}
+
+export function resolveRuleForTarget(
+  manifest: Manifest,
+  projectRoot: string,
+  target: string,
+): ResolvedDocRule {
+  const matches = Object.entries(manifest.docs.rules)
+    .filter(([, rule]) =>
+      rule.match.some((pattern) => matchRulePattern(target, pattern)),
+    )
+    .map(([name, config]) => ({ name, config }));
+
+  if (matches.length === 0) {
+    return {
+      name: DEFAULT_DOC_RULE_NAME,
+      config: DEFAULT_DOC_RULE,
+    };
+  }
+
+  if (matches.length > 1) {
+    throw new Error(`Multiple docs rules match target "${target}".`);
+  }
+
+  const [match] = matches;
+  if (!match) {
+    throw new Error(`No docs rule matches target "${target}".`);
+  }
+  return {
+    name: match.name,
+    config: {
+      ...DEFAULT_DOC_RULE,
+      ...match.config,
+    },
+  };
+}
+
+export function resolveRuleForEntry(
+  manifest: Manifest,
+  projectRoot: string,
+  entry: DocEntry,
+): ResolvedDocRule {
+  const ruleNames = new Set(
+    entry.targets.map(
+      (target) => resolveRuleForTarget(manifest, projectRoot, target).name,
+    ),
+  );
+
+  if (ruleNames.size !== 1) {
+    throw new Error(
+      `Doc entry targets must resolve to exactly one rule: ${entry.targets.join(", ")}`,
+    );
+  }
+
+  const [firstTarget] = entry.targets;
+  if (!firstTarget) {
+    throw new Error("Doc entry must declare at least one target.");
+  }
+
+  return resolveRuleForTarget(manifest, projectRoot, firstTarget);
+}
+
+function getDocOutputPaths(
+  manifest: Manifest,
+  projectRoot: string,
+  entry: DocEntry,
+): string[] {
+  const rule = resolveRuleForEntry(manifest, projectRoot, entry);
+  return rule.config.outputPaths.map((outputPath) =>
+    path.resolve(projectRoot, outputPath),
+  );
+}
+
+function getDocSourceFilePath(
+  manifest: Manifest,
+  projectRoot: string,
+  name: string,
+  entry: DocEntry,
+): string | undefined {
+  if (!isRemoteDocSource(projectRoot, entry.source)) {
+    return path.resolve(projectRoot, entry.source);
+  }
+
+  return getDocOutputPaths(manifest, projectRoot, entry)
+    .map((outputPath) => path.join(outputPath, `${name}.md`))
+    .find((candidatePath) => fs.existsSync(candidatePath));
+}
+
+export function validateDocsManifest(
+  manifest: Manifest,
+  projectRoot: string,
+): void {
+  if (Object.keys(manifest.docs.entries).length === 0) return;
+
+  for (const [name, entry] of Object.entries(manifest.docs.entries)) {
+    if (entry.targets.length === 0) {
+      throw new Error(`Doc entry "${name}" must declare at least one target.`);
+    }
+
+    resolveRuleForEntry(manifest, projectRoot, entry);
+
+    if (!isRemoteDocSource(projectRoot, entry.source)) {
+      const sourcePath = path.resolve(projectRoot, entry.source);
+      if (!sourcePath.endsWith(".md")) {
+        throw new Error(
+          `Local doc source for "${name}" must be a markdown file.`,
+        );
+      }
+      if (!fs.existsSync(sourcePath)) {
+        throw new Error(
+          `Local doc source for "${name}" does not exist: ${entry.source}`,
+        );
+      }
+    }
+  }
+}
+
 export function findDocsForFile(filePath: string): {
   file: string;
   docs: FileDocMatch[];
@@ -236,34 +324,8 @@ export function findDocsForFile(filePath: string): {
 
   const projectRoot = path.dirname(manifestPath);
   const manifest = readManifest(manifestPath);
-  const externalDocsDirs = (
-    manifest.docs.outputPaths.length > 0
-      ? manifest.docs.outputPaths
-      : ["docs/external"]
-  ).map((docsPath) => path.join(projectRoot, docsPath));
+  validateDocsManifest(manifest, projectRoot);
   const matchedDocs: { doc: FileDocMatch; sortKey: MatchSortKey }[] = [];
-
-  for (const docsDir of getLocalDocsDirs(projectRoot, manifest)) {
-    for (const doc of scanDocs(docsDir, projectRoot)) {
-      if (
-        !doc.paths.some((target) => matchTarget(projectRoot, filePath, target))
-      ) {
-        continue;
-      }
-
-      matchedDocs.push({
-        doc: {
-          kind: "local",
-          name: doc.title || doc.relativePath,
-          description: doc.description,
-          targets: doc.paths,
-          relativePath: doc.relativePath,
-          filePath: doc.filePath,
-        },
-        sortKey: getMatchSortKey(projectRoot, filePath, doc.paths),
-      });
-    }
-  }
 
   for (const [name, entry] of Object.entries(manifest.docs.entries)) {
     if (
@@ -274,20 +336,32 @@ export function findDocsForFile(filePath: string): {
       continue;
     }
 
-    const syncedPath = externalDocsDirs
-      .map((externalDocsDir) => path.join(externalDocsDir, `${name}.md`))
-      .find((candidatePath) => fs.existsSync(candidatePath));
+    const filePathForDoc = getDocSourceFilePath(
+      manifest,
+      projectRoot,
+      name,
+      entry,
+    );
+    const title =
+      filePathForDoc && fs.existsSync(filePathForDoc)
+        ? getDocTitle(filePathForDoc, projectRoot).title
+        : "";
+
     matchedDocs.push({
       doc: {
-        kind: "external",
-        name,
+        kind: isRemoteDocSource(projectRoot, entry.source)
+          ? "external"
+          : "local",
+        name: title || name,
         description: entry.description ?? "",
         targets: entry.targets,
-        source: entry.source,
-        relativePath: syncedPath
-          ? normalizeRelative(projectRoot, syncedPath)
+        source: isRemoteDocSource(projectRoot, entry.source)
+          ? entry.source
           : undefined,
-        filePath: syncedPath,
+        relativePath: filePathForDoc
+          ? normalizeRelative(projectRoot, filePathForDoc)
+          : undefined,
+        filePath: filePathForDoc,
       },
       sortKey: getMatchSortKey(projectRoot, filePath, entry.targets),
     });
@@ -316,53 +390,34 @@ export function findTargetsForDoc(docPath: string): {
 
   const projectRoot = path.dirname(manifestPath);
   const manifest = readManifest(manifestPath);
+  validateDocsManifest(manifest, projectRoot);
   const normalizedDocPath = normalizeRelative(
     projectRoot,
     path.resolve(projectRoot, docPath),
   );
-  const externalDocsDirs = (
-    manifest.docs.outputPaths.length > 0
-      ? manifest.docs.outputPaths
-      : ["docs/external"]
-  ).map((docsPath) => path.join(projectRoot, docsPath));
-
-  for (const docsDir of getLocalDocsDirs(projectRoot, manifest)) {
-    for (const doc of scanDocs(docsDir, projectRoot)) {
-      if (normalizeRelative(projectRoot, doc.filePath) !== normalizedDocPath) {
-        continue;
-      }
-
-      return {
-        doc: normalizedDocPath,
-        kind: "local",
-        name: doc.title || doc.relativePath,
-        description: doc.description,
-        targets: doc.paths.map((target) => ({
-          path: normalizeTarget(target),
-          kind: getTargetKind(projectRoot, target),
-        })),
-      };
-    }
-  }
 
   for (const [name, entry] of Object.entries(manifest.docs.entries)) {
-    const syncedPath = externalDocsDirs
-      .map((externalDocsDir) => path.join(externalDocsDir, `${name}.md`))
-      .find(
-        (candidatePath) =>
-          fs.existsSync(candidatePath) &&
-          normalizeRelative(projectRoot, candidatePath) === normalizedDocPath,
-      );
-    if (!syncedPath) {
+    const filePathForDoc = getDocSourceFilePath(
+      manifest,
+      projectRoot,
+      name,
+      entry,
+    );
+    if (!filePathForDoc) continue;
+
+    if (normalizeRelative(projectRoot, filePathForDoc) !== normalizedDocPath) {
       continue;
     }
 
+    const title = getDocTitle(filePathForDoc, projectRoot).title;
     return {
       doc: normalizedDocPath,
-      kind: "external",
-      name,
+      kind: isRemoteDocSource(projectRoot, entry.source) ? "external" : "local",
+      name: title || name,
       description: entry.description ?? "",
-      source: entry.source,
+      source: isRemoteDocSource(projectRoot, entry.source)
+        ? entry.source
+        : undefined,
       targets: entry.targets.map((target) => ({
         path: normalizeTarget(target),
         kind: getTargetKind(projectRoot, target),

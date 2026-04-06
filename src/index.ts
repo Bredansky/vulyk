@@ -14,7 +14,7 @@ import { targetsForCommand } from "./commands/targets-for.js";
 
 const program = new Command();
 
-program.name("vulyk").description("npm for AI agent skills").version("0.5.1");
+program.name("vulyk").description("npm for AI agent skills").version("0.6.0");
 
 program
   .command("init")
@@ -23,7 +23,7 @@ program
 
 program
   .command("add <specifier>")
-  .description("Add a skill (owner/repo/path or GitHub URL)")
+  .description("Add a skill from a GitHub blob/tree URL")
   .option("-n, --name <name>", "override the skill name")
   .action(async (specifier: string, opts: { name?: string }) => {
     await addCommand(specifier, { name: opts.name });
@@ -49,7 +49,7 @@ program
 program
   .command("list")
   .alias("ls")
-  .description("List all skills")
+  .description("List managed skills and tracked docs")
   .action(listCommand);
 
 program
@@ -82,10 +82,10 @@ program
 
 program
   .command("docs")
-  .description("Generate AGENTS.md files from docs/ folder")
+  .description("Generate AGENTS.md files from tracked docs")
   .option(
     "--also <filenames...>",
-    "also create these files importing AGENTS.md",
+    "add extra alias files importing AGENTS.md for this run",
   )
   .action((opts: { also?: string[] }) => {
     docsCommand({ also: opts.also });

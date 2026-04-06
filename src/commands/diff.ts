@@ -1,10 +1,12 @@
 import * as fs from "node:fs";
 import { execSync } from "node:child_process";
+import * as path from "node:path";
 import { findManifest, readManifest } from "../lib/manifest.js";
 import { parseSource, type GitResolvedSource } from "../lib/fetcher.js";
 import { color, log } from "../lib/log.js";
 import { getRepoCachePath } from "../lib/cache.js";
 import { stripPinnedRef } from "../lib/specifier.js";
+import { isRemoteDocSource, validateDocsManifest } from "../lib/docs.js";
 
 function fetchLatest(repoCache: string, ref: string): string {
   try {
@@ -78,6 +80,8 @@ export function diffCommand(name?: string): void {
   }
 
   const manifest = readManifest(manifestPath);
+  const projectRoot = path.dirname(manifestPath);
+  validateDocsManifest(manifest, projectRoot);
 
   const skills = name
     ? Object.entries(manifest.skills.entries).filter(
@@ -152,6 +156,10 @@ export function diffCommand(name?: string): void {
   if (docs.length > 0) {
     log.print(color.dim("\nDocs:"));
     for (const [entryName, entry] of docs) {
+      if (!isRemoteDocSource(projectRoot, entry.source)) {
+        log.print(`  ${color.dim(`${entryName} is local; diff unavailable`)}`);
+        continue;
+      }
       const resolved = parseSource(entry.source);
       if (!isGitSource(resolved)) {
         log.print(

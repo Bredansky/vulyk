@@ -15,8 +15,8 @@ npm install -g vulyk
 ```sh
 cd my-project
 vulyk init
-vulyk add nicobailon/visual-explainer/plugins/visual-explainer
-vulyk doc-add "https://github.com/alan2207/bulletproof-react/blob/master/docs/project-structure.md" \
+vulyk add "https://github.com/nicobailon/visual-explainer/tree/main/plugins/visual-explainer"
+vulyk doc-add "https://github.com/alan2207/bulletproof-react/blob/main/docs/project-structure.md" \
   --targets src \
   --description "Project structure conventions."
 vulyk sync
@@ -30,13 +30,11 @@ Creates a `vulyk.json` in the current directory.
 
 ### `vulyk add <specifier>`
 
-Adds a skill from a configured source, installs it into every `skills.outputPaths` entry, and stores the source in `skills.entries`.
+Adds a skill from a GitHub blob/tree URL, installs it into every `skills.outputPaths` entry, and stores the canonical pinned URL in `skills.entries`.
 
 ```sh
-vulyk add owner/repo/path/to/skill
-vulyk add owner/repo/path/to/skill@main
 vulyk add https://github.com/owner/repo/tree/main/skills/my-skill
-vulyk add owner/repo/path --name my-skill
+vulyk add https://github.com/owner/repo/tree/main/skills/my-skill --name my-skill
 ```
 
 If the path contains multiple skills, all detected skills are installed.
@@ -66,21 +64,22 @@ Updates git-backed skills and docs to the latest commit reachable from their con
 Tracks an external markdown doc in `docs.entries`.
 
 ```sh
-vulyk doc-add "https://github.com/alan2207/bulletproof-react/blob/master/docs/project-structure.md" \
+vulyk doc-add "https://github.com/alan2207/bulletproof-react/blob/main/docs/project-structure.md" \
   --targets src \
   --description "Project structure conventions."
 ```
 
 ### `vulyk docs`
 
-Scans local docs and synced external docs for frontmatter with `paths` and `description`, then generates `AGENTS.md` at the corresponding target paths.
+Generates `AGENTS.md` from tracked docs in `docs.entries`.
 
 ```sh
 vulyk docs
 vulyk docs --also CLAUDE.md
 ```
 
-By default it uses `docs.also` from `vulyk.json`, so alias files are reproducible without passing flags every time.
+This uses `docs.rules` to determine where generated aliases should appear and whether generated files should be gitignored.
+Targets without a matching rule fall back to `docs/external`, no aliases, and gitignored generated files.
 
 ### `vulyk docs-for <file>`
 
@@ -93,7 +92,7 @@ vulyk docs-for src/features/editor/poster.tsx
 
 It matches:
 
-- local docs with frontmatter `paths`
+- local docs declared in `docs.entries`
 - external docs declared in `docs.entries`
 - exact file targets and directory targets
 
@@ -108,28 +107,12 @@ vulyk targets-for docs/external/claude-statusline.md
 
 It returns:
 
-- local doc `paths` frontmatter as declared targets
-- external doc `targets` from `docs.entries`
+- the declared `targets` from `docs.entries`
 - target kinds for each path: `directory`, `file`, or `glob`
 
 ### `vulyk sync`
 
-The `npm install` for this manifest. It syncs skills, syncs external docs, and regenerates `AGENTS.md` plus aliases from `docs.also`.
-
-## :memo: Local docs
-
-Local docs need frontmatter:
-
-```md
----
-paths:
-  - src
-  - src/features
-description: API route conventions and patterns.
----
-```
-
-Generated `AGENTS.md` includes the doc title, description, and a pointer to the full markdown file.
+The `npm install` for this manifest. It syncs skills, syncs remote docs into rule-selected output paths, and regenerates `AGENTS.md` plus aliases.
 
 ## :receipt: `vulyk.json`
 
@@ -140,15 +123,24 @@ Generated `AGENTS.md` includes the doc title, description, and a pointer to the 
     "enabled": ["visual-explainer"],
     "entries": {
       "visual-explainer": {
-        "source": "nicobailon/visual-explainer/plugins/visual-explainer@9a97a58..."
+        "source": "https://github.com/nicobailon/visual-explainer/tree/9a97a58.../plugins/visual-explainer"
       }
     }
   },
   "docs": {
-    "localPaths": ["docs"],
-    "outputPaths": ["docs/external"],
-    "also": ["CLAUDE.md"],
+    "rules": {
+      "claude": {
+        "match": [".claude/**"],
+        "outputPaths": ["docs/external"],
+        "also": ["CLAUDE.md"]
+      }
+    },
     "entries": {
+      "api-routes": {
+        "source": "docs/api-routes.md",
+        "targets": ["src/app/api"],
+        "description": "API route conventions and patterns."
+      },
       "project-structure": {
         "source": "https://github.com/alan2207/bulletproof-react/blob/c66ea06.../docs/project-structure.md",
         "targets": ["src"],
@@ -164,32 +156,26 @@ Generated `AGENTS.md` includes the doc title, description, and a pointer to the 
 | `skills.outputPaths`    | Directories where managed skills are installed  |
 | `skills.enabled`        | Optional whitelist of enabled skills            |
 | `skills.entries.<name>` | Skill source metadata                           |
-| `docs.localPaths`       | Local doc roots scanned for frontmatter paths   |
-| `docs.outputPaths`      | Directories for synced external docs            |
-| `docs.also`             | Alias files to regenerate alongside `AGENTS.md` |
-| `docs.entries`          | External docs plus target metadata              |
+| `docs.rules`            | Optional path-scoped output and alias overrides |
+| `docs.entries`          | Local and external docs plus target metadata    |
 
 ## :link: Specifier format
 
-| Format                                            | Resolves to                |
-| ------------------------------------------------- | -------------------------- |
-| `owner/repo/path`                                 | HEAD of the default branch |
-| `owner/repo/path@main`                            | A branch or tag            |
-| `owner/repo/path@abc123f`                         | A pinned commit            |
-| `https://github.com/owner/repo/tree/<commit>/...` | An immutable GitHub tree   |
-| `https://github.com/owner/repo/blob/<commit>/...` | An immutable GitHub blob   |
-| `https://github.com/owner/repo/tree/branch/path`  | A GitHub URL               |
-| `https://example.com/file.md`                     | A direct markdown URL      |
-| `https://example.com/archive.zip`                 | A direct archive URL       |
+| Format                                         | Resolves to               |
+| ---------------------------------------------- | ------------------------- |
+| `https://github.com/owner/repo/tree/<ref>/...` | A GitHub-backed tree path |
+| `https://github.com/owner/repo/blob/<ref>/...` | A GitHub-backed file path |
+| `https://example.com/file.md`                  | A direct markdown URL     |
+| `https://example.com/archive.zip`              | A direct archive URL      |
 
-Git-backed sources are pinned to commits during `add`, `sync`, and `update`. Direct URLs remain unchanged and are refreshed as-is.
+GitHub-backed sources are normalized to pinned commit URLs during `add`, `sync`, and `update`. Direct non-GitHub URLs remain unchanged and are refreshed as-is.
 
 ## :broom: How managed files work
 
 - Each installed skill gets a `.vulyk` marker file.
-- Root `.gitignore` is updated with skill/doc paths and generated alias globs.
+- Root `.gitignore` is updated with skill paths and generated doc files that are configured to be ignored.
 - Local skills without a `.vulyk` marker are never removed by `sync`.
-- External docs are normalized with frontmatter during sync so local and remote docs behave the same way.
+- Local docs are referenced directly from the manifest, while remote docs are materialized into the matched rule's `outputPaths`.
 
 ## :page_facing_up: License
 
