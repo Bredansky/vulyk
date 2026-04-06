@@ -87,7 +87,7 @@ By default it uses `docs.also` from `vulyk.json`, so alias files are reproducibl
 Prints JSON for tracked docs that apply to a specific file. This is useful when a skill or review workflow wants to answer "which docs should I compare this file against?"
 
 ```sh
-vulyk docs-for .claude/hooks/context-statusline.ts
+vulyk docs-for .claude/hooks/context-statusline.cjs
 vulyk docs-for src/features/editor/poster.tsx
 ```
 
@@ -96,6 +96,21 @@ It matches:
 - local docs with frontmatter `paths`
 - external docs declared in `docs.entries`
 - exact file targets and directory targets
+
+### `vulyk targets-for <doc>`
+
+Prints JSON for tracked targets declared by a specific doc. This is useful when a doc changes and you want to know which files or folders may need review.
+
+```sh
+vulyk targets-for docs/agent-hooks.md
+vulyk targets-for docs/external/claude-statusline.md
+```
+
+It returns:
+
+- local doc `paths` frontmatter as declared targets
+- external doc `targets` from `docs.entries`
+- target kinds for each path: `directory`, `file`, or `glob`
 
 ### `vulyk sync`
 

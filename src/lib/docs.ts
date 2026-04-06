@@ -24,6 +24,11 @@ export interface FileDocMatch {
   source?: string;
 }
 
+export interface DocTargetMatch {
+  path: string;
+  kind: "directory" | "file" | "glob";
+}
+
 interface MatchSortKey {
   depth: number;
   exact: boolean;
@@ -114,6 +119,23 @@ function normalizeRelative(projectRoot: string, value: string): string {
 
 function normalizeTarget(target: string): string {
   return target.replace(/\\/g, "/").replace(/[\\/]$/, "");
+}
+
+function getTargetKind(
+  projectRoot: string,
+  target: string,
+): DocTargetMatch["kind"] {
+  if (target.includes("*")) return "glob";
+
+  const resolvedTarget = path.resolve(projectRoot, target);
+  if (
+    fs.existsSync(resolvedTarget) &&
+    fs.statSync(resolvedTarget).isDirectory()
+  ) {
+    return "directory";
+  }
+
+  return "file";
 }
 
 function matchTarget(
@@ -214,10 +236,11 @@ export function findDocsForFile(filePath: string): {
 
   const projectRoot = path.dirname(manifestPath);
   const manifest = readManifest(manifestPath);
-  const externalDocsDir = path.join(
-    projectRoot,
-    manifest.docs.outputPaths[0] ?? "docs/external",
-  );
+  const externalDocsDirs = (
+    manifest.docs.outputPaths.length > 0
+      ? manifest.docs.outputPaths
+      : ["docs/external"]
+  ).map((docsPath) => path.join(projectRoot, docsPath));
   const matchedDocs: { doc: FileDocMatch; sortKey: MatchSortKey }[] = [];
 
   for (const docsDir of getLocalDocsDirs(projectRoot, manifest)) {
@@ -251,7 +274,9 @@ export function findDocsForFile(filePath: string): {
       continue;
     }
 
-    const syncedPath = path.join(externalDocsDir, `${name}.md`);
+    const syncedPath = externalDocsDirs
+      .map((externalDocsDir) => path.join(externalDocsDir, `${name}.md`))
+      .find((candidatePath) => fs.existsSync(candidatePath));
     matchedDocs.push({
       doc: {
         kind: "external",
@@ -259,10 +284,10 @@ export function findDocsForFile(filePath: string): {
         description: entry.description ?? "",
         targets: entry.targets,
         source: entry.source,
-        relativePath: fs.existsSync(syncedPath)
+        relativePath: syncedPath
           ? normalizeRelative(projectRoot, syncedPath)
           : undefined,
-        filePath: fs.existsSync(syncedPath) ? syncedPath : undefined,
+        filePath: syncedPath,
       },
       sortKey: getMatchSortKey(projectRoot, filePath, entry.targets),
     });
@@ -274,4 +299,76 @@ export function findDocsForFile(filePath: string): {
       .sort((left, right) => compareMatchSortKey(left.sortKey, right.sortKey))
       .map((entry) => entry.doc),
   };
+}
+
+export function findTargetsForDoc(docPath: string): {
+  doc: string;
+  kind: "local" | "external";
+  name: string;
+  description: string;
+  source?: string;
+  targets: DocTargetMatch[];
+} {
+  const manifestPath = findManifest();
+  if (!manifestPath) {
+    throw new Error("No vulyk.json found.");
+  }
+
+  const projectRoot = path.dirname(manifestPath);
+  const manifest = readManifest(manifestPath);
+  const normalizedDocPath = normalizeRelative(
+    projectRoot,
+    path.resolve(projectRoot, docPath),
+  );
+  const externalDocsDirs = (
+    manifest.docs.outputPaths.length > 0
+      ? manifest.docs.outputPaths
+      : ["docs/external"]
+  ).map((docsPath) => path.join(projectRoot, docsPath));
+
+  for (const docsDir of getLocalDocsDirs(projectRoot, manifest)) {
+    for (const doc of scanDocs(docsDir, projectRoot)) {
+      if (normalizeRelative(projectRoot, doc.filePath) !== normalizedDocPath) {
+        continue;
+      }
+
+      return {
+        doc: normalizedDocPath,
+        kind: "local",
+        name: doc.title || doc.relativePath,
+        description: doc.description,
+        targets: doc.paths.map((target) => ({
+          path: normalizeTarget(target),
+          kind: getTargetKind(projectRoot, target),
+        })),
+      };
+    }
+  }
+
+  for (const [name, entry] of Object.entries(manifest.docs.entries)) {
+    const syncedPath = externalDocsDirs
+      .map((externalDocsDir) => path.join(externalDocsDir, `${name}.md`))
+      .find(
+        (candidatePath) =>
+          fs.existsSync(candidatePath) &&
+          normalizeRelative(projectRoot, candidatePath) === normalizedDocPath,
+      );
+    if (!syncedPath) {
+      continue;
+    }
+
+    return {
+      doc: normalizedDocPath,
+      kind: "external",
+      name,
+      description: entry.description ?? "",
+      source: entry.source,
+      targets: entry.targets.map((target) => ({
+        path: normalizeTarget(target),
+        kind: getTargetKind(projectRoot, target),
+      })),
+    };
+  }
+
+  throw new Error(`No tracked doc found for "${docPath}".`);
 }

@@ -60,7 +60,14 @@ export function docsCommand(opts: { also?: string[] }): void {
         : getTargetDir(resolved);
 
       if (!byTarget.has(targetDir)) byTarget.set(targetDir, []);
-      byTarget.get(targetDir)?.push(doc);
+      const existingDocs = byTarget.get(targetDir);
+      if (
+        !existingDocs?.some(
+          (existingDoc) => existingDoc.filePath === doc.filePath,
+        )
+      ) {
+        existingDocs?.push(doc);
+      }
     }
   }
 

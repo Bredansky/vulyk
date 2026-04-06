@@ -10,10 +10,11 @@ import { diffCommand } from "./commands/diff.js";
 import { docsCommand } from "./commands/docs.js";
 import { docAddCommand } from "./commands/doc-add.js";
 import { docsForCommand } from "./commands/docs-for.js";
+import { targetsForCommand } from "./commands/targets-for.js";
 
 const program = new Command();
 
-program.name("vulyk").description("npm for AI agent skills").version("0.4.0");
+program.name("vulyk").description("npm for AI agent skills").version("0.5.1");
 
 program
   .command("init")
@@ -95,6 +96,13 @@ program
   .description("List tracked docs that apply to a specific file")
   .action((file: string) => {
     docsForCommand(file);
+  });
+
+program
+  .command("targets-for <doc>")
+  .description("List tracked targets for a specific doc")
+  .action((doc: string) => {
+    targetsForCommand(doc);
   });
 
 program
