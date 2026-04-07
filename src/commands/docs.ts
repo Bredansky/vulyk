@@ -241,9 +241,7 @@ export function docsCommand(opts: { also?: string[] }): void {
     for (const alias of bucket.aliases) {
       const aliasPath = path.join(targetDir, alias);
       fs.writeFileSync(aliasPath, `@${AGENTS_FILE}\n`);
-      log.dim(
-        `  + ${path.relative(projectRoot, aliasPath)} -> @${AGENTS_FILE}`,
-      );
+      log.dim(`  Created ${path.relative(projectRoot, aliasPath)} alias`);
     }
   }
 
