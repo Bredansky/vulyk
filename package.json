@@ -1,6 +1,6 @@
 {
   "name": "vulyk",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Package manager for AI agent skills and agents",
   "keywords": [
     "ai",
@@ -13,6 +13,10 @@
   "license": "MIT",
   "author": "bredansky",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bredansky/vulyk"
+  },
   "files": [
     "dist",
     "src"
