@@ -3,6 +3,7 @@ import { findManifest, readManifest } from "../lib/manifest.js";
 import { isEnabled } from "../lib/whitelist.js";
 import { color, log } from "../lib/log.js";
 import { isRemoteDocSource, validateDocsManifest } from "../lib/docs.js";
+import { validateSkillsManifest } from "../lib/skills.js";
 
 export function listCommand(): void {
   const manifestPath = findManifest();
@@ -13,6 +14,7 @@ export function listCommand(): void {
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
+  validateSkillsManifest(manifest);
   validateDocsManifest(manifest, projectRoot);
   const skills = Object.entries(manifest.skills.entries);
   const docs = Object.entries(manifest.docs.entries);

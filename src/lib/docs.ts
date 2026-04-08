@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { DocEntry, DocRule, Manifest } from "../types.js";
 import { findManifest, readManifest } from "./manifest.js";
+import { validateRemoteDocSource } from "./source-validation.js";
 
 export interface DocFile {
   filePath: string;
@@ -309,7 +310,10 @@ export function validateDocsManifest(
           `Local doc source for "${name}" does not exist: ${entry.source}`,
         );
       }
+      continue;
     }
+
+    validateRemoteDocSource(name, entry.source);
   }
 }
 

@@ -21,6 +21,7 @@ import {
   resolveRuleForEntry,
   validateDocsManifest,
 } from "../lib/docs.js";
+import { validateSkillsManifest } from "../lib/skills.js";
 import { docsCommand } from "./docs.js";
 
 function cleanupStaleManagedSkillPaths(manifestPath: string): void {
@@ -130,6 +131,7 @@ export async function syncCommand(): Promise<void> {
   }
 
   const manifest = readManifest(manifestPath);
+  validateSkillsManifest(manifest);
   validateDocsManifest(manifest, path.dirname(manifestPath));
   let changed = false;
   cleanupStaleManagedSkillPaths(manifestPath);

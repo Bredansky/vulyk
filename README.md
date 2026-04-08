@@ -30,11 +30,12 @@ Creates a `vulyk.json` in the current directory.
 
 ### `vulyk add <specifier>`
 
-Adds a skill from a GitHub blob/tree URL, installs it into every `skills.outputPaths` entry, and stores the canonical pinned URL in `skills.entries`.
+Adds a skill from a remote URL, installs it into every `skills.outputPaths` entry, and stores the canonical pinned URL in `skills.entries` for GitHub sources.
 
 ```sh
 vulyk add https://github.com/owner/repo/tree/main/skills/my-skill
 vulyk add https://github.com/owner/repo/tree/main/skills/my-skill --name my-skill
+vulyk add https://example.com/my-skill.zip
 ```
 
 If the path contains multiple skills, all detected skills are installed.
@@ -168,7 +169,7 @@ The `npm install` for this manifest. It syncs skills, syncs remote docs into rul
 | `https://example.com/file.md`                  | A direct markdown URL     |
 | `https://example.com/archive.zip`              | A direct archive URL      |
 
-GitHub-backed sources are normalized to pinned commit URLs during `add`, `sync`, and `update`. Direct non-GitHub URLs remain unchanged and are refreshed as-is.
+GitHub-backed sources in `vulyk.json` must use commit-pinned `blob` or `tree` URLs. During `add`, `sync`, and `update`, GitHub sources are normalized to pinned commit URLs. Direct non-GitHub URLs remain unchanged and are refreshed as-is.
 
 ## :broom: How managed files work
 

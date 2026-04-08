@@ -17,6 +17,7 @@ import {
   resolveRuleForEntry,
   validateDocsManifest,
 } from "../lib/docs.js";
+import { validateSkillsManifest } from "../lib/skills.js";
 
 function fetchLatest(repoCache: string, ref: string): string {
   try {
@@ -49,6 +50,7 @@ export async function updateCommand(name?: string): Promise<void> {
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
+  validateSkillsManifest(manifest);
   validateDocsManifest(manifest, projectRoot);
 
   const skills = name

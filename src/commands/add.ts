@@ -8,7 +8,11 @@ import { install } from "../lib/installer.js";
 import { isEnabled } from "../lib/whitelist.js";
 import { type Manifest } from "../types.js";
 import { log } from "../lib/log.js";
-import { pinSpecifier, stripPinnedRef } from "../lib/specifier.js";
+import {
+  pinSpecifier,
+  stripPinnedRef,
+  isRemoteSpecifier,
+} from "../lib/specifier.js";
 
 function getPrimarySkillOutputPath(manifest: Manifest): string {
   return manifest.skills.outputPaths[0] ?? "skills";
@@ -53,9 +57,9 @@ export async function addCommand(
     process.exit(1);
   }
 
-  if (!specifier.startsWith("https://github.com/")) {
+  if (!isRemoteSpecifier(specifier)) {
     log.error(
-      "Skills must use a full GitHub blob/tree URL. Shorthand repo specifiers are no longer supported.",
+      "Skills must use a remote URL. Use a direct URL or a full GitHub blob/tree URL.",
     );
     process.exit(1);
   }

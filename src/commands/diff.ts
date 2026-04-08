@@ -7,6 +7,7 @@ import { color, log } from "../lib/log.js";
 import { getRepoCachePath } from "../lib/cache.js";
 import { stripPinnedRef } from "../lib/specifier.js";
 import { isRemoteDocSource, validateDocsManifest } from "../lib/docs.js";
+import { validateSkillsManifest } from "../lib/skills.js";
 
 function fetchLatest(repoCache: string, ref: string): string {
   try {
@@ -81,6 +82,7 @@ export function diffCommand(name?: string): void {
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
+  validateSkillsManifest(manifest);
   validateDocsManifest(manifest, projectRoot);
 
   const skills = name

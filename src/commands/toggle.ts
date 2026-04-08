@@ -5,6 +5,7 @@ import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
 import { install, uninstall } from "../lib/installer.js";
 import { parseSource, fetchSource } from "../lib/fetcher.js";
 import { log } from "../lib/log.js";
+import { validateSkillsManifest } from "../lib/skills.js";
 
 export async function enableCommand(name: string): Promise<void> {
   const manifestPath = findManifest();
@@ -14,6 +15,7 @@ export async function enableCommand(name: string): Promise<void> {
   }
 
   const manifest = readManifest(manifestPath);
+  validateSkillsManifest(manifest);
   if (!manifest.skills.entries[name]) {
     log.error(`"${name}" not found`);
     process.exit(1);
@@ -49,6 +51,7 @@ export function disableCommand(name: string): void {
   }
 
   const manifest = readManifest(manifestPath);
+  validateSkillsManifest(manifest);
   if (!manifest.skills.entries[name]) {
     log.error(`"${name}" not found`);
     process.exit(1);
