@@ -4,6 +4,8 @@
 
 `vulyk` is a lightweight, spec-driven package manager for AI agent skills, external agent docs, and generated `AGENTS.md` files. It installs skills from versioned sources or direct URLs, syncs them across clones, and keeps agent context reproducible.
 
+This repo can also host canonical skills under `skills/` that projects consume via pinned GitHub `tree/<commit>` URLs.
+
 ## :package: Install
 
 ```sh
