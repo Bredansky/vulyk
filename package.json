@@ -17,6 +17,9 @@
     "type": "git",
     "url": "https://github.com/Bredansky/vulyk"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "files": [
     "dist",
     "src"
