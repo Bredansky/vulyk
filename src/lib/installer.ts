@@ -34,6 +34,7 @@ function readSkillName(srcDir: string): string | null {
 }
 
 const MARKER = ".vulyk";
+const MARKER_CONTENT = "🍯\n";
 
 export function install(
   packageName: string,
@@ -46,7 +47,7 @@ export function install(
     const dest = path.join(resolved, installName);
     if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
     copyDir(srcDir, dest);
-    fs.writeFileSync(path.join(dest, MARKER), "");
+    fs.writeFileSync(path.join(dest, MARKER), MARKER_CONTENT);
   }
   // Add to root .gitignore — use relative path from first target
   const entries = new Set(getRootGitignoreEntries());
