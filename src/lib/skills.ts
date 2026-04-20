@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { Manifest } from "../types.js";
 import { detect } from "./detector.js";
 import { validateRemoteSkillSource } from "./source-validation.js";
+import { resolveInstallName } from "./installer.js";
 
 export function resolveSkillSourcePath(
   projectRoot: string,
@@ -16,6 +17,22 @@ export function isLocalSkillSource(
   source: string,
 ): boolean {
   return fs.existsSync(resolveSkillSourcePath(projectRoot, source));
+}
+
+export function getPreservedLocalSkillPaths(
+  projectRoot: string,
+  skillName: string,
+  source: string,
+  outputPaths: string[],
+): string[] {
+  if (!isLocalSkillSource(projectRoot, source)) return [];
+
+  const sourcePath = resolveSkillSourcePath(projectRoot, source);
+  const installName = resolveInstallName(skillName, sourcePath);
+
+  return outputPaths
+    .map((outputPath) => path.resolve(projectRoot, outputPath, installName))
+    .filter((candidatePath) => candidatePath === path.resolve(sourcePath));
 }
 
 export function validateSkillsManifest(

@@ -13,7 +13,10 @@ import {
   stripPinnedRef,
   isRemoteSpecifier,
 } from "../lib/specifier.js";
-import { resolveSkillSourcePath } from "../lib/skills.js";
+import {
+  getPreservedLocalSkillPaths,
+  resolveSkillSourcePath,
+} from "../lib/skills.js";
 
 function getPrimarySkillOutputPath(manifest: Manifest): string {
   return manifest.skills.outputPaths[0] ?? "skills";
@@ -54,6 +57,14 @@ function addLocalSingle(
     sourcePath,
     sourcePath,
     manifest.skills.outputPaths,
+    {
+      preservePaths: getPreservedLocalSkillPaths(
+        projectRoot,
+        sourcePath,
+        sourcePath,
+        manifest.skills.outputPaths,
+      ),
+    },
   );
   manifest.skills.entries[installedName] = {
     source: toRelativePosix(projectRoot, sourcePath),

@@ -22,6 +22,7 @@ import {
   validateDocsManifest,
 } from "../lib/docs.js";
 import {
+  getPreservedLocalSkillPaths,
   isLocalSkillSource,
   resolveSkillSourcePath,
   validateSkillsManifest,
@@ -223,7 +224,14 @@ export async function syncCommand(): Promise<void> {
 
   for (const [name, entry] of skills) {
     if (!isEnabled(manifest, name)) {
-      uninstall(name, manifest.skills.outputPaths);
+      uninstall(name, manifest.skills.outputPaths, {
+        preservePaths: getPreservedLocalSkillPaths(
+          projectRoot,
+          name,
+          entry.source,
+          manifest.skills.outputPaths,
+        ),
+      });
       log.dim(`  skipped ${name} (not in whitelist)`);
       continue;
     }
@@ -231,11 +239,15 @@ export async function syncCommand(): Promise<void> {
     log.info(`  syncing ${name}...`);
     if (isLocalSkillSource(projectRoot, entry.source)) {
       try {
-        install(
-          name,
-          resolveSkillSourcePath(projectRoot, entry.source),
-          manifest.skills.outputPaths,
-        );
+        const sourcePath = resolveSkillSourcePath(projectRoot, entry.source);
+        install(name, sourcePath, manifest.skills.outputPaths, {
+          preservePaths: getPreservedLocalSkillPaths(
+            projectRoot,
+            name,
+            entry.source,
+            manifest.skills.outputPaths,
+          ),
+        });
         log.success(name);
       } catch (err) {
         log.error(

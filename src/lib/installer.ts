@@ -36,15 +36,46 @@ function readSkillName(srcDir: string): string | null {
 const MARKER = ".vulyk";
 const MARKER_CONTENT = "🍯\n";
 
+interface InstallOptions {
+  preservePaths?: string[];
+}
+
+function normalizeAbsolutePath(value: string): string {
+  return path.resolve(value);
+}
+
+function isPreservedPath(
+  candidate: string,
+  preservePaths: string[] | undefined,
+): boolean {
+  if (!preservePaths || preservePaths.length === 0) return false;
+  const normalizedCandidate = normalizeAbsolutePath(candidate);
+  return preservePaths.some(
+    (preservePath) =>
+      normalizeAbsolutePath(preservePath) === normalizedCandidate,
+  );
+}
+
+export function resolveInstallName(
+  packageName: string,
+  srcDir: string,
+): string {
+  return readSkillName(srcDir) ?? packageName;
+}
+
 export function install(
   packageName: string,
   srcDir: string,
   targetPaths: string[],
+  opts?: InstallOptions,
 ): string {
-  const installName = readSkillName(srcDir) ?? packageName;
+  const installName = resolveInstallName(packageName, srcDir);
   for (const targetPath of targetPaths) {
     const resolved = resolvePath(targetPath);
     const dest = path.join(resolved, installName);
+    if (isPreservedPath(dest, opts?.preservePaths)) {
+      continue;
+    }
     if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
     copyDir(srcDir, dest);
     fs.writeFileSync(path.join(dest, MARKER), MARKER_CONTENT);
@@ -52,20 +83,40 @@ export function install(
   // Add to root .gitignore — use relative path from first target
   const entries = new Set(getRootGitignoreEntries());
   for (const targetPath of targetPaths) {
+    const resolved = resolvePath(targetPath);
+    const dest = path.join(resolved, installName);
+    if (isPreservedPath(dest, opts?.preservePaths)) {
+      continue;
+    }
     entries.add(`${targetPath}/${installName}/`);
   }
   updateRootGitignore([...entries].sort());
   return installName;
 }
 
-export function uninstall(name: string, targetPaths: string[]): void {
+export function uninstall(
+  name: string,
+  targetPaths: string[],
+  opts?: InstallOptions,
+): void {
   for (const targetPath of targetPaths) {
     const resolved = resolvePath(targetPath);
     const dest = path.join(resolved, name);
+    if (isPreservedPath(dest, opts?.preservePaths)) {
+      continue;
+    }
     if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
   }
   // Remove from root .gitignore
-  const toRemove = new Set(targetPaths.map((p) => `${p}/${name}/`));
+  const toRemove = new Set(
+    targetPaths
+      .filter((targetPath) => {
+        const resolved = resolvePath(targetPath);
+        const dest = path.join(resolved, name);
+        return !isPreservedPath(dest, opts?.preservePaths);
+      })
+      .map((targetPath) => `${targetPath}/${name}/`),
+  );
   const entries = getRootGitignoreEntries().filter((e) => !toRemove.has(e));
   updateRootGitignore(entries);
 }

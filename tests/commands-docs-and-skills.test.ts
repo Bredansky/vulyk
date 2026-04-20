@@ -6,6 +6,10 @@ import * as path from "node:path";
 import { docsCommand } from "../src/commands/docs.js";
 import { docAddCommand } from "../src/commands/doc-add.js";
 import { docRemoveCommand } from "../src/commands/doc-remove.js";
+import {
+  docRuleRemoveCommand,
+  docRuleSetCommand,
+} from "../src/commands/doc-rule.js";
 import { disableCommand, enableCommand } from "../src/commands/toggle.js";
 import { removeCommand } from "../src/commands/remove.js";
 import { syncCommand } from "../src/commands/sync.js";
@@ -223,6 +227,48 @@ void test("docRemoveCommand removes a tracked doc entry", () => {
       "utf8",
     );
     assert.doesNotMatch(manifestBody, /"claude-statusline":/);
+  } finally {
+    process.chdir(initialCwd);
+  }
+});
+
+void test("doc rule commands manage docs.rules entries in the manifest", () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    docs: {
+      rules: {},
+      entries: {},
+    },
+  });
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    docRuleSetCommand("codex", {
+      match: ["skills/**"],
+      outputPaths: ["docs/skills"],
+      also: ["AGENTS.md"],
+      gitignoreGenerated: false,
+    });
+
+    let manifestBody = fs.readFileSync(
+      path.join(projectRoot, "vulyk.json"),
+      "utf8",
+    );
+    assert.match(manifestBody, /"codex":\s*\{/);
+    assert.match(manifestBody, /"match": \[\s*"skills\/\*\*"\s*\]/);
+    assert.match(manifestBody, /"outputPaths": \[\s*"docs\/skills"\s*\]/);
+    assert.match(manifestBody, /"also": \[\s*"AGENTS\.md"\s*\]/);
+    assert.match(manifestBody, /"gitignoreGenerated": false/);
+
+    docRuleRemoveCommand("codex");
+    manifestBody = fs.readFileSync(
+      path.join(projectRoot, "vulyk.json"),
+      "utf8",
+    );
+    assert.doesNotMatch(manifestBody, /"codex":/);
   } finally {
     process.chdir(initialCwd);
   }

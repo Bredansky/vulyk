@@ -18,6 +18,7 @@ import {
   validateDocsManifest,
 } from "../lib/docs.js";
 import {
+  getPreservedLocalSkillPaths,
   isLocalSkillSource,
   resolveSkillSourcePath,
   validateSkillsManifest,
@@ -79,11 +80,15 @@ export async function updateCommand(name?: string): Promise<void> {
 
   for (const [entryName, entry] of skills) {
     if (isLocalSkillSource(projectRoot, entry.source)) {
-      install(
-        entryName,
-        resolveSkillSourcePath(projectRoot, entry.source),
-        manifest.skills.outputPaths,
-      );
+      const sourcePath = resolveSkillSourcePath(projectRoot, entry.source);
+      install(entryName, sourcePath, manifest.skills.outputPaths, {
+        preservePaths: getPreservedLocalSkillPaths(
+          projectRoot,
+          entryName,
+          entry.source,
+          manifest.skills.outputPaths,
+        ),
+      });
       log.print(`  ${color.dim(`${entryName} is local; refreshed from disk`)}`);
       continue;
     }

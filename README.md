@@ -48,6 +48,16 @@ If the path contains multiple skills, all detected skills are installed. Local s
 
 Removes a managed skill and deletes it from `skills.entries`.
 
+### `vulyk skill-output-add <path>` / `vulyk skill-output-remove <path>`
+
+Adds or removes a path in `skills.outputPaths`.
+
+```sh
+vulyk skill-output-add .claude/skills
+vulyk skill-output-add skills
+vulyk skill-output-remove .claude/skills
+```
+
 ### `vulyk enable <name>` / `vulyk disable <name>`
 
 Toggles a skill on or off without removing it. This uses the optional `skills.enabled` whitelist.
@@ -80,6 +90,18 @@ Removes a tracked doc from `docs.entries`.
 
 ```sh
 vulyk doc-remove claude-statusline
+```
+
+### `vulyk doc-rule-set <name>` / `vulyk doc-rule-remove <name>`
+
+Creates, replaces, or removes a rule in `docs.rules`.
+
+```sh
+vulyk doc-rule-set claude \
+  --match ".claude/**" \
+  --output-paths docs/external \
+  --also CLAUDE.md
+vulyk doc-rule-remove claude
 ```
 
 ### `vulyk docs`
@@ -194,6 +216,7 @@ GitHub-backed remote sources in `vulyk.json` must use commit-pinned `blob` or `t
 - Root `.gitignore` is updated with skill paths and generated doc files that are configured to be ignored.
 - Local skills without a `.vulyk` marker are never removed by `sync`.
 - Local skills are installed directly from their source directories, while remote skills are fetched into managed outputs.
+- If a local skill already lives under one of the configured `skills.outputPaths`, Vulyk preserves that source directory in place instead of copying it into itself or gitignoring it.
 - Local docs are referenced directly from the manifest, while remote docs are materialized into the matched rule's `outputPaths`.
 
 ## :page_facing_up: License

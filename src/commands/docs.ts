@@ -13,6 +13,7 @@ import {
   type ResolvedDocRule,
   validateDocsManifest,
 } from "../lib/docs.js";
+import { getPreservedLocalSkillPaths } from "../lib/skills.js";
 import type { DocEntry } from "../types.js";
 import { log } from "../lib/log.js";
 
@@ -237,9 +238,23 @@ export function docsCommand(opts: { also?: string[] }): void {
   validateDocsManifest(manifest, projectRoot);
   const entries = Object.entries(manifest.docs.entries);
   const currentSkillEntries = new Set(
-    Object.keys(manifest.skills.entries).flatMap((name) =>
-      manifest.skills.outputPaths.map((outputPath) => `${outputPath}/${name}/`),
-    ),
+    Object.entries(manifest.skills.entries).flatMap(([name, entry]) => {
+      const preservedPaths = new Set(
+        getPreservedLocalSkillPaths(
+          projectRoot,
+          name,
+          entry.source,
+          manifest.skills.outputPaths,
+        ).map((value) => path.resolve(value)),
+      );
+
+      return manifest.skills.outputPaths
+        .filter((outputPath) => {
+          const candidatePath = path.resolve(projectRoot, outputPath, name);
+          return !preservedPaths.has(candidatePath);
+        })
+        .map((outputPath) => `${outputPath}/${name}/`);
+    }),
   );
 
   if (entries.length === 0) {

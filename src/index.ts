@@ -10,12 +10,20 @@ import { diffCommand } from "./commands/diff.js";
 import { docsCommand } from "./commands/docs.js";
 import { docAddCommand } from "./commands/doc-add.js";
 import { docRemoveCommand } from "./commands/doc-remove.js";
+import {
+  docRuleRemoveCommand,
+  docRuleSetCommand,
+} from "./commands/doc-rule.js";
 import { docsForCommand } from "./commands/docs-for.js";
+import {
+  skillOutputAddCommand,
+  skillOutputRemoveCommand,
+} from "./commands/skill-output.js";
 import { targetsForCommand } from "./commands/targets-for.js";
 
 const program = new Command();
 
-program.name("vulyk").description("npm for AI agent skills").version("0.6.0");
+program.name("vulyk").description("npm for AI agent skills").version("0.7.9");
 
 program
   .command("init")
@@ -34,6 +42,16 @@ program
   .command("remove <name>")
   .description("Remove a skill")
   .action(removeCommand);
+
+program
+  .command("skill-output-add <path>")
+  .description("Add a managed skill output path")
+  .action(skillOutputAddCommand);
+
+program
+  .command("skill-output-remove <path>")
+  .description("Remove a managed skill output path")
+  .action(skillOutputRemoveCommand);
 
 program
   .command("enable <name>")
@@ -85,6 +103,41 @@ program
   .command("doc-remove <name>")
   .description("Remove a tracked doc")
   .action(docRemoveCommand);
+
+program
+  .command("doc-rule-set <name>")
+  .description("Create or replace a docs rule")
+  .requiredOption("-m, --match <patterns...>", "target match patterns")
+  .option("-o, --output-paths <paths...>", "paths for fetched external docs")
+  .option("--also <filenames...>", "extra alias files for matched targets")
+  .option("--gitignore-generated", "gitignore generated files for this rule")
+  .option(
+    "--no-gitignore-generated",
+    "do not gitignore generated files for this rule",
+  )
+  .action(
+    (
+      name: string,
+      opts: {
+        match: string[];
+        outputPaths?: string[];
+        also?: string[];
+        gitignoreGenerated?: boolean;
+      },
+    ) => {
+      docRuleSetCommand(name, {
+        match: opts.match,
+        outputPaths: opts.outputPaths,
+        also: opts.also,
+        gitignoreGenerated: opts.gitignoreGenerated,
+      });
+    },
+  );
+
+program
+  .command("doc-rule-remove <name>")
+  .description("Remove a docs rule")
+  .action(docRuleRemoveCommand);
 
 program
   .command("docs")

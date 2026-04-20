@@ -6,6 +6,10 @@ import * as path from "node:path";
 import { addCommand } from "../src/commands/add.js";
 import { syncCommand } from "../src/commands/sync.js";
 import { updateCommand } from "../src/commands/update.js";
+import {
+  skillOutputAddCommand,
+  skillOutputRemoveCommand,
+} from "../src/commands/skill-output.js";
 
 function makeTempProject(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-skills-test-"));
@@ -149,6 +153,93 @@ void test("syncCommand and updateCommand install local skills directly from disk
 
     await updateCommand("alpha");
     assert.match(fs.readFileSync(installedSkillPath, "utf8"), /Alpha v2/);
+  } finally {
+    process.chdir(initialCwd);
+  }
+});
+
+void test("local skill sources can share a codex-style output root without being overwritten or gitignored", async () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    skills: {
+      outputPaths: ["skills", "managed-skills"],
+      entries: {
+        alpha: {
+          source: "skills/alpha",
+        },
+      },
+    },
+  });
+  writeFile(
+    path.join(projectRoot, "skills", "alpha", "SKILL.md"),
+    "---\nname: alpha\n---\n\n# Alpha source\n",
+  );
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    await syncCommand();
+
+    assert.equal(
+      fs.readFileSync(
+        path.join(projectRoot, "skills", "alpha", "SKILL.md"),
+        "utf8",
+      ),
+      "---\nname: alpha\n---\n\n# Alpha source\n",
+    );
+    assert.equal(
+      fs.existsSync(path.join(projectRoot, "skills", "alpha", ".vulyk")),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(
+        path.join(projectRoot, "managed-skills", "alpha", "SKILL.md"),
+      ),
+      true,
+    );
+    assert.equal(
+      fs.existsSync(
+        path.join(projectRoot, "managed-skills", "alpha", ".vulyk"),
+      ),
+      true,
+    );
+
+    const gitignoreBody = fs.readFileSync(
+      path.join(projectRoot, ".gitignore"),
+      "utf8",
+    );
+    assert.doesNotMatch(gitignoreBody, /^skills\/alpha\/$/m);
+    assert.match(gitignoreBody, /^managed-skills\/alpha\/$/m);
+  } finally {
+    process.chdir(initialCwd);
+  }
+});
+
+void test("skill output commands manage outputPaths in the manifest", () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    skills: {
+      outputPaths: [".claude/skills"],
+    },
+  });
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    skillOutputAddCommand("skills/");
+    skillOutputAddCommand(".claude/skills");
+    skillOutputRemoveCommand(".claude/skills");
+
+    const manifestBody = fs.readFileSync(
+      path.join(projectRoot, "vulyk.json"),
+      "utf8",
+    );
+    assert.match(manifestBody, /"outputPaths": \[\s*"skills"\s*\]/);
+    assert.doesNotMatch(manifestBody, /\.claude\/skills/);
   } finally {
     process.chdir(initialCwd);
   }

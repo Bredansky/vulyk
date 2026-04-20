@@ -6,6 +6,7 @@ import { install, uninstall } from "../lib/installer.js";
 import { parseSource, fetchSource } from "../lib/fetcher.js";
 import { log } from "../lib/log.js";
 import {
+  getPreservedLocalSkillPaths,
   isLocalSkillSource,
   resolveSkillSourcePath,
   validateSkillsManifest,
@@ -39,11 +40,18 @@ export async function enableCommand(name: string): Promise<void> {
   }
 
   if (isLocalSkillSource(projectRoot, manifest.skills.entries[name].source)) {
-    install(
-      name,
-      resolveSkillSourcePath(projectRoot, manifest.skills.entries[name].source),
-      manifest.skills.outputPaths,
+    const sourcePath = resolveSkillSourcePath(
+      projectRoot,
+      manifest.skills.entries[name].source,
     );
+    install(name, sourcePath, manifest.skills.outputPaths, {
+      preservePaths: getPreservedLocalSkillPaths(
+        projectRoot,
+        name,
+        manifest.skills.entries[name].source,
+        manifest.skills.outputPaths,
+      ),
+    });
     log.success(`Enabled "${name}"`);
     return;
   }
@@ -77,6 +85,13 @@ export function disableCommand(name: string): void {
     : Object.keys(manifest.skills.entries).filter((n) => n !== name);
 
   writeManifest(manifestPath, manifest);
-  uninstall(name, manifest.skills.outputPaths);
+  uninstall(name, manifest.skills.outputPaths, {
+    preservePaths: getPreservedLocalSkillPaths(
+      path.dirname(manifestPath),
+      name,
+      manifest.skills.entries[name].source,
+      manifest.skills.outputPaths,
+    ),
+  });
   log.success(`Disabled "${name}"`);
 }
