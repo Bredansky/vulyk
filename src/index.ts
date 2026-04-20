@@ -9,6 +9,7 @@ import { updateCommand } from "./commands/update.js";
 import { diffCommand } from "./commands/diff.js";
 import { docsCommand } from "./commands/docs.js";
 import { docAddCommand } from "./commands/doc-add.js";
+import { docRemoveCommand } from "./commands/doc-remove.js";
 import { docsForCommand } from "./commands/docs-for.js";
 import { targetsForCommand } from "./commands/targets-for.js";
 
@@ -79,6 +80,11 @@ program
       });
     },
   );
+
+program
+  .command("doc-remove <name>")
+  .description("Remove a tracked doc")
+  .action(docRemoveCommand);
 
 program
   .command("docs")

@@ -74,6 +74,14 @@ vulyk doc-add "https://github.com/alan2207/bulletproof-react/blob/main/docs/proj
   --description "Project structure conventions."
 ```
 
+### `vulyk doc-remove <name>`
+
+Removes a tracked doc from `docs.entries`.
+
+```sh
+vulyk doc-remove claude-statusline
+```
+
 ### `vulyk docs`
 
 Generates `AGENTS.md` from tracked docs in `docs.entries`.

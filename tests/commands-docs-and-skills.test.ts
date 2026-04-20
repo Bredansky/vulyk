@@ -5,8 +5,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { docsCommand } from "../src/commands/docs.js";
 import { docAddCommand } from "../src/commands/doc-add.js";
+import { docRemoveCommand } from "../src/commands/doc-remove.js";
 import { disableCommand, enableCommand } from "../src/commands/toggle.js";
 import { removeCommand } from "../src/commands/remove.js";
+import { syncCommand } from "../src/commands/sync.js";
 import { findDocsForFile, findTargetsForDoc } from "../src/lib/docs.js";
 
 function makeTempProject(): string {
@@ -190,6 +192,101 @@ void test("docAddCommand tracks a remote doc and docs queries distinguish local 
     assert.match(gitignoreBody, /# managed by vulyk/);
     assert.match(gitignoreBody, /CLAUDE\.md/);
     assert.match(gitignoreBody, /^\*\*\/\.vulyk$/m);
+  } finally {
+    process.chdir(initialCwd);
+  }
+});
+
+void test("docRemoveCommand removes a tracked doc entry", () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    docs: {
+      entries: {
+        "claude-statusline": {
+          source: "https://example.com/claude-statusline.md",
+          targets: [".claude/settings.json"],
+          description: "External statusline guidance.",
+        },
+      },
+    },
+  });
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    docRemoveCommand("claude-statusline");
+
+    const manifestBody = fs.readFileSync(
+      path.join(projectRoot, "vulyk.json"),
+      "utf8",
+    );
+    assert.doesNotMatch(manifestBody, /"claude-statusline":/);
+  } finally {
+    process.chdir(initialCwd);
+  }
+});
+
+void test("syncCommand prunes stale external doc files after doc removal", async () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    docs: {
+      rules: {
+        claude: {
+          match: [".claude/**"],
+          outputPaths: ["docs/external"],
+          also: ["CLAUDE.md"],
+        },
+      },
+      entries: {
+        "claude-statusline": {
+          source: "https://example.com/claude-statusline.md",
+          targets: [".claude/settings.json"],
+          description: "External statusline guidance.",
+        },
+      },
+    },
+  });
+  writeFile(
+    path.join(projectRoot, "docs", "external", "claude-statusline.md"),
+    "# Statusline\n",
+  );
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    docsCommand({});
+    assert.equal(
+      fs.existsSync(
+        path.join(projectRoot, "docs", "external", "claude-statusline.md"),
+      ),
+      true,
+    );
+    assert.equal(
+      fs.existsSync(path.join(projectRoot, ".claude", "AGENTS.md")),
+      true,
+    );
+
+    docRemoveCommand("claude-statusline");
+    await syncCommand();
+
+    assert.equal(
+      fs.existsSync(
+        path.join(projectRoot, "docs", "external", "claude-statusline.md"),
+      ),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(path.join(projectRoot, ".claude", "AGENTS.md")),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(path.join(projectRoot, ".claude", "CLAUDE.md")),
+      false,
+    );
   } finally {
     process.chdir(initialCwd);
   }

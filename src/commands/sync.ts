@@ -127,6 +127,59 @@ async function syncExternalDocs(manifestPath: string): Promise<void> {
   if (changed) writeManifest(manifestPath, manifest);
 }
 
+function cleanupStaleExternalDocFiles(manifestPath: string): void {
+  const manifest = readManifest(manifestPath);
+  const projectRoot = path.dirname(manifestPath);
+  const managedGitignoreEntries = new Set(getRootGitignoreEntries());
+  const outputPathToExpectedFiles = new Map<string, Set<string>>();
+
+  for (const [name, entry] of Object.entries(manifest.docs.entries)) {
+    if (!isRemoteDocSource(projectRoot, entry.source)) continue;
+    const rule = resolveRuleForEntry(manifest, projectRoot, entry);
+
+    for (const outputPath of rule.config.outputPaths) {
+      const resolvedOutputPath = resolvePath(
+        path.join(projectRoot, outputPath),
+      );
+      if (!outputPathToExpectedFiles.has(resolvedOutputPath)) {
+        outputPathToExpectedFiles.set(resolvedOutputPath, new Set());
+      }
+      outputPathToExpectedFiles.get(resolvedOutputPath)?.add(`${name}.md`);
+    }
+  }
+
+  const candidateOutputPaths =
+    outputPathToExpectedFiles.size > 0
+      ? [...outputPathToExpectedFiles.keys()]
+      : [...managedGitignoreEntries]
+          .filter(
+            (entry) =>
+              !entry.endsWith("/") &&
+              !entry.endsWith(".md") &&
+              entry !== "AGENTS.md" &&
+              entry !== "**/.vulyk" &&
+              !entry.includes("CLAUDE.md"),
+          )
+          .map((entry) => resolvePath(path.join(projectRoot, entry)));
+
+  for (const outputPath of candidateOutputPaths) {
+    if (!fs.existsSync(outputPath) || !fs.statSync(outputPath).isDirectory()) {
+      continue;
+    }
+
+    const expectedFiles =
+      outputPathToExpectedFiles.get(outputPath) ?? new Set();
+    for (const entry of fs.readdirSync(outputPath, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      if (expectedFiles.has(entry.name)) continue;
+
+      const absolutePath = path.join(outputPath, entry.name);
+      fs.rmSync(absolutePath, { force: true });
+      log.dim(`  removed ${path.relative(projectRoot, absolutePath)}`);
+    }
+  }
+}
+
 export async function syncCommand(): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
@@ -209,6 +262,8 @@ export async function syncCommand(): Promise<void> {
   }
 
   if (changed) writeManifest(manifestPath, manifest);
+
+  cleanupStaleExternalDocFiles(manifestPath);
 
   if (Object.keys(manifest.docs.entries).length > 0) {
     log.info("\n  syncing external docs...");
