@@ -215,8 +215,9 @@ void test("docsCommand gitignores generated doc marker files for active buckets"
       "utf8",
     );
     assert.match(gitignoreBody, /^# managed by vulyk/m);
-    assert.match(gitignoreBody, /^\.vulyk$/m);
-    assert.match(gitignoreBody, /^\.claude\/\.vulyk$/m);
+    assert.match(gitignoreBody, /^\*\*\/\.vulyk$/m);
+    assert.doesNotMatch(gitignoreBody, /^\.vulyk$/m);
+    assert.doesNotMatch(gitignoreBody, /^\.claude\/\.vulyk$/m);
   } finally {
     process.chdir(initialCwd);
   }

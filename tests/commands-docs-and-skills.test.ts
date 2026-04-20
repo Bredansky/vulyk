@@ -189,8 +189,7 @@ void test("docAddCommand tracks a remote doc and docs queries distinguish local 
     );
     assert.match(gitignoreBody, /# managed by vulyk/);
     assert.match(gitignoreBody, /CLAUDE\.md/);
-    assert.match(gitignoreBody, /\.claude\/\.vulyk/);
-    assert.doesNotMatch(gitignoreBody, /src\/app\/\.vulyk/);
+    assert.match(gitignoreBody, /^\*\*\/\.vulyk$/m);
   } finally {
     process.chdir(initialCwd);
   }

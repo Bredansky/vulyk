@@ -47,20 +47,16 @@ function buildGeneratedDocIgnoreEntries(
 ): string[] {
   const entries = new Set<string>();
   let hasGeneratedAgents = false;
+  let hasGeneratedDocMarkers = false;
   const rootAliases = new Set<string>();
   const subtreeAliases = new Map<string, Set<string>>();
 
   for (const [targetDir, bucket] of byTarget) {
     if (!bucket.gitignoreGenerated) continue;
     hasGeneratedAgents = true;
+    hasGeneratedDocMarkers = true;
 
     const relativeDir = toRelativePosix(projectRoot, targetDir);
-    const markerEntry =
-      !relativeDir || relativeDir === "."
-        ? DOC_MARKER_FILE
-        : `${relativeDir}/${DOC_MARKER_FILE}`;
-    entries.add(markerEntry);
-
     if (!relativeDir || relativeDir === ".") {
       for (const alias of bucket.aliases) {
         rootAliases.add(alias);
@@ -84,6 +80,10 @@ function buildGeneratedDocIgnoreEntries(
 
   if (hasGeneratedAgents) {
     entries.add(AGENTS_FILE);
+  }
+
+  if (hasGeneratedDocMarkers) {
+    entries.add(`**/${DOC_MARKER_FILE}`);
   }
 
   for (const alias of rootAliases) {
