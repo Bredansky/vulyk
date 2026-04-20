@@ -171,3 +171,53 @@ void test("docsCommand keeps a bucket alive when another entry still targets it"
     process.chdir(initialCwd);
   }
 });
+
+void test("docsCommand gitignores generated doc marker files for active buckets", () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeFile(path.join(projectRoot, "docs", "root.md"), "# Root\n");
+  writeFile(path.join(projectRoot, "docs", "claude.md"), "# Claude\n");
+  fs.mkdirSync(path.join(projectRoot, ".claude"), {
+    recursive: true,
+  });
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    docs: {
+      rules: {
+        claude: {
+          match: [".claude/**"],
+          also: ["CLAUDE.md"],
+        },
+      },
+      entries: {
+        root: {
+          source: "docs/root.md",
+          targets: ["README.md"],
+          description: "Root doc.",
+        },
+        claude: {
+          source: "docs/claude.md",
+          targets: [".claude/settings.json"],
+          description: "Claude doc.",
+        },
+      },
+    },
+  });
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    docsCommand({});
+
+    const gitignoreBody = fs.readFileSync(
+      path.join(projectRoot, ".gitignore"),
+      "utf8",
+    );
+    assert.match(gitignoreBody, /^# managed by vulyk/m);
+    assert.match(gitignoreBody, /^\.vulyk$/m);
+    assert.match(gitignoreBody, /^\.claude\/\.vulyk$/m);
+  } finally {
+    process.chdir(initialCwd);
+  }
+});

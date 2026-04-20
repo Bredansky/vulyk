@@ -55,6 +55,12 @@ function buildGeneratedDocIgnoreEntries(
     hasGeneratedAgents = true;
 
     const relativeDir = toRelativePosix(projectRoot, targetDir);
+    const markerEntry =
+      !relativeDir || relativeDir === "."
+        ? DOC_MARKER_FILE
+        : `${relativeDir}/${DOC_MARKER_FILE}`;
+    entries.add(markerEntry);
+
     if (!relativeDir || relativeDir === ".") {
       for (const alias of bucket.aliases) {
         rootAliases.add(alias);
