@@ -247,6 +247,11 @@ void test("syncCommand prunes stale external doc files after doc removal", async
           targets: [".claude/settings.json"],
           description: "External statusline guidance.",
         },
+        "project-structure": {
+          source: "docs/external/project-structure.md",
+          targets: ["src"],
+          description: "Local structure guidance.",
+        },
       },
     },
   });
@@ -254,6 +259,11 @@ void test("syncCommand prunes stale external doc files after doc removal", async
     path.join(projectRoot, "docs", "external", "claude-statusline.md"),
     "# Statusline\n",
   );
+  writeFile(
+    path.join(projectRoot, "docs", "external", "project-structure.md"),
+    "# Project Structure\n",
+  );
+  writeFile(path.join(projectRoot, "src", "index.ts"), "export {};\n");
 
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
@@ -278,6 +288,12 @@ void test("syncCommand prunes stale external doc files after doc removal", async
         path.join(projectRoot, "docs", "external", "claude-statusline.md"),
       ),
       false,
+    );
+    assert.equal(
+      fs.existsSync(
+        path.join(projectRoot, "docs", "external", "project-structure.md"),
+      ),
+      true,
     );
     assert.equal(
       fs.existsSync(path.join(projectRoot, ".claude", "AGENTS.md")),

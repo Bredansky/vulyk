@@ -132,9 +132,14 @@ function cleanupStaleExternalDocFiles(manifestPath: string): void {
   const projectRoot = path.dirname(manifestPath);
   const managedGitignoreEntries = new Set(getRootGitignoreEntries());
   const outputPathToExpectedFiles = new Map<string, Set<string>>();
+  const protectedLocalDocFiles = new Set<string>();
 
   for (const [name, entry] of Object.entries(manifest.docs.entries)) {
-    if (!isRemoteDocSource(projectRoot, entry.source)) continue;
+    if (!isRemoteDocSource(projectRoot, entry.source)) {
+      protectedLocalDocFiles.add(path.resolve(projectRoot, entry.source));
+      continue;
+    }
+
     const rule = resolveRuleForEntry(manifest, projectRoot, entry);
 
     for (const outputPath of rule.config.outputPaths) {
@@ -174,6 +179,8 @@ function cleanupStaleExternalDocFiles(manifestPath: string): void {
       if (expectedFiles.has(entry.name)) continue;
 
       const absolutePath = path.join(outputPath, entry.name);
+      if (protectedLocalDocFiles.has(absolutePath)) continue;
+
       fs.rmSync(absolutePath, { force: true });
       log.dim(`  removed ${path.relative(projectRoot, absolutePath)}`);
     }
