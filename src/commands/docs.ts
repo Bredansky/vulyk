@@ -19,6 +19,7 @@ import { log } from "../lib/log.js";
 
 const AGENTS_FILE = "AGENTS.md";
 const DOC_MARKER_FILE = ".vulyk";
+const HONEYPOT = "🍯";
 
 interface GeneratedDocBucketState {
   kind: "docs";
@@ -155,11 +156,33 @@ function readGeneratedDocBucketState(
     return null;
   }
 
+  const markerBody = fs.readFileSync(markerPath, "utf8");
+
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    const parsed: unknown = JSON.parse(markerBody);
     return isGeneratedDocBucketState(parsed) ? parsed : null;
   } catch {
-    return null;
+    const files = markerBody
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        if (!line.startsWith(`${HONEYPOT} `)) {
+          return [];
+        }
+
+        const file = line.slice(`${HONEYPOT} `.length).trim();
+        return file ? [file] : [];
+      });
+
+    if (files.length === 0) {
+      return null;
+    }
+
+    return {
+      kind: "docs",
+      files: [...new Set(files)].sort(),
+    };
   }
 }
 
@@ -168,11 +191,11 @@ function writeGeneratedDocBucketState(
   files: Iterable<string>,
 ): void {
   const markerPath = getDocMarkerPath(targetDir);
-  const state: GeneratedDocBucketState = {
-    kind: "docs",
-    files: [...new Set(files)].sort(),
-  };
-  fs.writeFileSync(markerPath, `${JSON.stringify(state, null, 2)}\n`);
+  const markerBody = [...new Set(files)]
+    .sort()
+    .map((file) => `${HONEYPOT} ${file}`)
+    .join("\n");
+  fs.writeFileSync(markerPath, `${markerBody}\n`);
 }
 
 function collectDocManagedDirs(projectRoot: string): string[] {

@@ -23,7 +23,7 @@ import { targetsForCommand } from "./commands/targets-for.js";
 
 const program = new Command();
 
-program.name("vulyk").description("npm for AI agent skills").version("0.7.9");
+program.name("vulyk").description("npm for AI agent skills").version("0.7.10");
 
 program
   .command("init")

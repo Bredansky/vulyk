@@ -29,47 +29,105 @@ import {
 } from "../lib/skills.js";
 import { docsCommand } from "./docs.js";
 
+function collectManagedSkillDirs(rootDir: string): string[] {
+  const managedDirs: string[] = [];
+  const ignoredDirNames = new Set([
+    ".git",
+    "node_modules",
+    ".next",
+    ".turbo",
+    ".yarn",
+    "dist",
+    "build",
+    "coverage",
+  ]);
+
+  function visit(dir: string): void {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (ignoredDirNames.has(entry.name)) continue;
+
+      const entryPath = path.join(dir, entry.name);
+      if (
+        isManagedByVulyk(entryPath) &&
+        fs.existsSync(path.join(entryPath, "SKILL.md"))
+      ) {
+        managedDirs.push(entryPath);
+        continue;
+      }
+
+      visit(entryPath);
+    }
+  }
+
+  visit(rootDir);
+  return managedDirs;
+}
+
 function cleanupStaleManagedSkillPaths(manifestPath: string): void {
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
   const expectedSkillEntries = new Set(
-    Object.keys(manifest.skills.entries).flatMap((name) =>
-      manifest.skills.outputPaths.map((outputPath) => `${outputPath}/${name}/`),
+    Object.entries(manifest.skills.entries).flatMap(([name, entry]) => {
+      const preservedPaths = new Set(
+        getPreservedLocalSkillPaths(
+          projectRoot,
+          name,
+          entry.source,
+          manifest.skills.outputPaths,
+        ).map((value) => path.resolve(value)),
+      );
+
+      return manifest.skills.outputPaths
+        .filter((outputPath) => {
+          const candidatePath = path.resolve(projectRoot, outputPath, name);
+          return !preservedPaths.has(candidatePath);
+        })
+        .map((outputPath) => `${outputPath}/${name}/`);
+    }),
+  );
+  const expectedSkillDirs = new Set(
+    [...expectedSkillEntries].map((entry) =>
+      path.resolve(projectRoot, entry.replace(/[\\/]+$/, "")),
     ),
   );
 
   const managedEntries = getRootGitignoreEntries();
+  const removableEntrySet = new Set<string>();
+  const managedSkillDirs = collectManagedSkillDirs(projectRoot).filter(
+    (skillDir) => !expectedSkillDirs.has(path.resolve(skillDir)),
+  );
+
+  for (const skillDir of managedSkillDirs) {
+    fs.rmSync(skillDir, { recursive: true, force: true });
+    const relativeEntry = `${path.relative(projectRoot, skillDir).replace(/\\/g, "/")}/`;
+    removableEntrySet.add(relativeEntry);
+    log.dim(`  removed ${relativeEntry} (stale managed path)`);
+  }
+
   const staleSkillEntries = managedEntries.filter((entry) => {
     if (!entry.endsWith("/")) return false;
     if (entry.startsWith("**/")) return false;
-    const normalizedEntry = entry.replace(/\\/g, "/");
-    const isSkillPath = manifest.skills.outputPaths.some((outputPath) =>
-      normalizedEntry.startsWith(`${outputPath.replace(/\\/g, "/")}/`),
-    );
-    if (!isSkillPath) return false;
     return !expectedSkillEntries.has(entry);
   });
-
-  if (staleSkillEntries.length === 0) return;
-
-  const removableEntries: string[] = [];
+  const missingEntries: string[] = [];
   for (const entry of staleSkillEntries) {
-    const skillDir = path.join(projectRoot, entry.replace(/[\\/]+$/, ""));
-    if (!fs.existsSync(skillDir)) {
-      removableEntries.push(entry);
+    if (!fs.existsSync(path.join(projectRoot, entry.replace(/[\\/]+$/, "")))) {
+      missingEntries.push(entry);
       continue;
     }
-    if (!isManagedByVulyk(skillDir)) continue;
-
-    fs.rmSync(skillDir, { recursive: true, force: true });
-    removableEntries.push(entry);
-    log.dim(`  removed ${entry} (stale managed path)`);
+    if (removableEntrySet.has(entry)) continue;
   }
 
-  if (removableEntries.length === 0) return;
+  if (removableEntrySet.size === 0 && missingEntries.length === 0) return;
 
   updateRootGitignore(
-    managedEntries.filter((entry) => !removableEntries.includes(entry)).sort(),
+    managedEntries
+      .filter(
+        (entry) =>
+          !missingEntries.includes(entry) && !removableEntrySet.has(entry),
+      )
+      .sort(),
   );
 }
 

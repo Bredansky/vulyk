@@ -244,3 +244,61 @@ void test("skill output commands manage outputPaths in the manifest", () => {
     process.chdir(initialCwd);
   }
 });
+
+void test("syncCommand prunes stale managed remote skills from removed output paths", async () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    skills: {
+      outputPaths: [".claude/skills", ".codex/skills"],
+      entries: {
+        alpha: {
+          source: "sources/alpha",
+        },
+      },
+    },
+  });
+  writeFile(
+    path.join(projectRoot, "sources", "alpha", "SKILL.md"),
+    "---\nname: alpha\n---\n\n# Alpha source\n",
+  );
+  writeFile(
+    path.join(projectRoot, "skills", "remote-one", "SKILL.md"),
+    "---\nname: remote-one\n---\n\n# Remote one\n",
+  );
+  writeFile(path.join(projectRoot, "skills", "remote-one", ".vulyk"), "🍯\n");
+  writeFile(
+    path.join(projectRoot, "skills", "remote-two", "SKILL.md"),
+    "---\nname: remote-two\n---\n\n# Remote two\n",
+  );
+  writeFile(path.join(projectRoot, "skills", "remote-two", ".vulyk"), "🍯\n");
+  writeFile(
+    path.join(projectRoot, ".gitignore"),
+    "# managed by vulyk\nskills/remote-one/\nskills/remote-two/\n# end vulyk\n",
+  );
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    await syncCommand();
+
+    assert.equal(
+      fs.existsSync(path.join(projectRoot, "skills", "remote-one")),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(path.join(projectRoot, "skills", "remote-two")),
+      false,
+    );
+
+    const gitignoreBody = fs.readFileSync(
+      path.join(projectRoot, ".gitignore"),
+      "utf8",
+    );
+    assert.doesNotMatch(gitignoreBody, /^skills\/remote-one\/$/m);
+    assert.doesNotMatch(gitignoreBody, /^skills\/remote-two\/$/m);
+  } finally {
+    process.chdir(initialCwd);
+  }
+});

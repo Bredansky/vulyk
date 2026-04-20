@@ -222,3 +222,94 @@ void test("docsCommand gitignores generated doc marker files for active buckets"
     process.chdir(initialCwd);
   }
 });
+
+void test("docsCommand writes honeypot-style doc markers with generated filenames", () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeFile(path.join(projectRoot, "docs", "skills.md"), "# Skills\n");
+  fs.mkdirSync(path.join(projectRoot, ".claude", "skills"), {
+    recursive: true,
+  });
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    docs: {
+      rules: {
+        claude: {
+          match: [".claude/**"],
+          also: ["CLAUDE.md"],
+        },
+      },
+      entries: {
+        skills: {
+          source: "docs/skills.md",
+          targets: [".claude/skills"],
+          description: "Skills guidance.",
+          gitignoreGenerated: false,
+        },
+      },
+    },
+  });
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    docsCommand({});
+
+    const markerBody = fs.readFileSync(
+      path.join(projectRoot, ".claude", "skills", ".vulyk"),
+      "utf8",
+    );
+    assert.match(markerBody, /^🍯 AGENTS\.md$/m);
+    assert.match(markerBody, /^🍯 CLAUDE\.md$/m);
+    assert.doesNotMatch(markerBody, /"kind": "docs"/);
+  } finally {
+    process.chdir(initialCwd);
+  }
+});
+
+void test("docsCommand still cleans up stale buckets written with legacy JSON doc markers", () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  fs.mkdirSync(path.join(projectRoot, ".claude", "skills"), {
+    recursive: true,
+  });
+  writeFile(
+    path.join(projectRoot, ".claude", "skills", "AGENTS.md"),
+    "# Skills\n",
+  );
+  writeFile(
+    path.join(projectRoot, ".claude", "skills", "CLAUDE.md"),
+    "@AGENTS.md\n",
+  );
+  writeJson(path.join(projectRoot, ".claude", "skills", ".vulyk"), {
+    kind: "docs",
+    files: ["AGENTS.md", "CLAUDE.md"],
+  });
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    docs: {
+      entries: {},
+    },
+  });
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    docsCommand({});
+
+    assert.equal(
+      exists(path.join(projectRoot, ".claude", "skills", "AGENTS.md")),
+      false,
+    );
+    assert.equal(
+      exists(path.join(projectRoot, ".claude", "skills", "CLAUDE.md")),
+      false,
+    );
+    assert.equal(
+      exists(path.join(projectRoot, ".claude", "skills", ".vulyk")),
+      false,
+    );
+  } finally {
+    process.chdir(initialCwd);
+  }
+});
