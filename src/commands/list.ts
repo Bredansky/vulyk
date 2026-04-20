@@ -3,7 +3,7 @@ import { findManifest, readManifest } from "../lib/manifest.js";
 import { isEnabled } from "../lib/whitelist.js";
 import { color, log } from "../lib/log.js";
 import { isRemoteDocSource, validateDocsManifest } from "../lib/docs.js";
-import { validateSkillsManifest } from "../lib/skills.js";
+import { isLocalSkillSource, validateSkillsManifest } from "../lib/skills.js";
 
 export function listCommand(): void {
   const manifestPath = findManifest();
@@ -14,7 +14,7 @@ export function listCommand(): void {
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
-  validateSkillsManifest(manifest);
+  validateSkillsManifest(manifest, projectRoot);
   validateDocsManifest(manifest, projectRoot);
   const skills = Object.entries(manifest.skills.entries);
   const docs = Object.entries(manifest.docs.entries);
@@ -27,7 +27,9 @@ export function listCommand(): void {
       const status = isEnabled(manifest, name)
         ? color.green("+")
         : color.red("-");
-      log.print(`  ${status} ${name} ${color.dim(entry.source)}`);
+      log.print(
+        `  ${status} ${name} ${color.dim(isLocalSkillSource(projectRoot, entry.source) ? "local" : "external")} ${color.dim(entry.source)}`,
+      );
     }
   }
 

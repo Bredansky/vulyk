@@ -5,7 +5,11 @@ import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
 import { install, uninstall } from "../lib/installer.js";
 import { parseSource, fetchSource } from "../lib/fetcher.js";
 import { log } from "../lib/log.js";
-import { validateSkillsManifest } from "../lib/skills.js";
+import {
+  isLocalSkillSource,
+  resolveSkillSourcePath,
+  validateSkillsManifest,
+} from "../lib/skills.js";
 
 export async function enableCommand(name: string): Promise<void> {
   const manifestPath = findManifest();
@@ -15,7 +19,8 @@ export async function enableCommand(name: string): Promise<void> {
   }
 
   const manifest = readManifest(manifestPath);
-  validateSkillsManifest(manifest);
+  const projectRoot = path.dirname(manifestPath);
+  validateSkillsManifest(manifest, projectRoot);
   if (!manifest.skills.entries[name]) {
     log.error(`"${name}" not found`);
     process.exit(1);
@@ -31,6 +36,16 @@ export async function enableCommand(name: string): Promise<void> {
   if (!manifest.skills.enabled.includes(name)) {
     manifest.skills.enabled.push(name);
     writeManifest(manifestPath, manifest);
+  }
+
+  if (isLocalSkillSource(projectRoot, manifest.skills.entries[name].source)) {
+    install(
+      name,
+      resolveSkillSourcePath(projectRoot, manifest.skills.entries[name].source),
+      manifest.skills.outputPaths,
+    );
+    log.success(`Enabled "${name}"`);
+    return;
   }
 
   const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
@@ -51,7 +66,7 @@ export function disableCommand(name: string): void {
   }
 
   const manifest = readManifest(manifestPath);
-  validateSkillsManifest(manifest);
+  validateSkillsManifest(manifest, path.dirname(manifestPath));
   if (!manifest.skills.entries[name]) {
     log.error(`"${name}" not found`);
     process.exit(1);

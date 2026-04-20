@@ -21,7 +21,11 @@ import {
   resolveRuleForEntry,
   validateDocsManifest,
 } from "../lib/docs.js";
-import { validateSkillsManifest } from "../lib/skills.js";
+import {
+  isLocalSkillSource,
+  resolveSkillSourcePath,
+  validateSkillsManifest,
+} from "../lib/skills.js";
 import { docsCommand } from "./docs.js";
 
 function cleanupStaleManagedSkillPaths(manifestPath: string): void {
@@ -131,8 +135,9 @@ export async function syncCommand(): Promise<void> {
   }
 
   const manifest = readManifest(manifestPath);
-  validateSkillsManifest(manifest);
-  validateDocsManifest(manifest, path.dirname(manifestPath));
+  const projectRoot = path.dirname(manifestPath);
+  validateSkillsManifest(manifest, projectRoot);
+  validateDocsManifest(manifest, projectRoot);
   let changed = false;
   cleanupStaleManagedSkillPaths(manifestPath);
   const skills = Object.entries(manifest.skills.entries);
@@ -164,6 +169,22 @@ export async function syncCommand(): Promise<void> {
     }
 
     log.info(`  syncing ${name}...`);
+    if (isLocalSkillSource(projectRoot, entry.source)) {
+      try {
+        install(
+          name,
+          resolveSkillSourcePath(projectRoot, entry.source),
+          manifest.skills.outputPaths,
+        );
+        log.success(name);
+      } catch (err) {
+        log.error(
+          `Failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      continue;
+    }
+
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
     if (fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true });

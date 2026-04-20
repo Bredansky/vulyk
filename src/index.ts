@@ -23,7 +23,7 @@ program
 
 program
   .command("add <specifier>")
-  .description("Add a skill from a remote URL")
+  .description("Add a skill from a local path or remote URL")
   .option("-n, --name <name>", "override the skill name")
   .action(async (specifier: string, opts: { name?: string }) => {
     await addCommand(specifier, { name: opts.name });

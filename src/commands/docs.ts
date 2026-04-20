@@ -17,6 +17,12 @@ import type { DocEntry } from "../types.js";
 import { log } from "../lib/log.js";
 
 const AGENTS_FILE = "AGENTS.md";
+const DOC_MARKER_FILE = ".vulyk";
+
+interface GeneratedDocBucketState {
+  kind: "docs";
+  files: string[];
+}
 
 interface GeneratedDoc {
   filePath: string;
@@ -116,6 +122,102 @@ function shouldGitignoreGenerated(
   return entry.gitignoreGenerated ?? rule.config.gitignoreGenerated ?? true;
 }
 
+function getDocMarkerPath(targetDir: string): string {
+  return path.join(targetDir, DOC_MARKER_FILE);
+}
+
+function isGeneratedDocBucketState(
+  value: unknown,
+): value is GeneratedDocBucketState {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    value.kind === "docs" &&
+    "files" in value &&
+    Array.isArray(value.files) &&
+    value.files.every((file) => typeof file === "string")
+  );
+}
+
+function readGeneratedDocBucketState(
+  targetDir: string,
+): GeneratedDocBucketState | null {
+  const markerPath = getDocMarkerPath(targetDir);
+  if (!fs.existsSync(markerPath)) {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    return isGeneratedDocBucketState(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeGeneratedDocBucketState(
+  targetDir: string,
+  files: Iterable<string>,
+): void {
+  const markerPath = getDocMarkerPath(targetDir);
+  const state: GeneratedDocBucketState = {
+    kind: "docs",
+    files: [...new Set(files)].sort(),
+  };
+  fs.writeFileSync(markerPath, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+function collectDocManagedDirs(projectRoot: string): string[] {
+  const dirs: string[] = [];
+
+  const visit = (dir: string): void => {
+    const markerState = readGeneratedDocBucketState(dir);
+    if (markerState) {
+      dirs.push(dir);
+    }
+
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name === "node_modules" || entry.name === ".git") continue;
+      visit(path.join(dir, entry.name));
+    }
+  };
+
+  visit(projectRoot);
+  return dirs.sort();
+}
+
+function cleanupStaleGeneratedDocs(
+  projectRoot: string,
+  activeTargetDirs: Iterable<string>,
+): void {
+  const active = new Set(
+    [...activeTargetDirs].map((targetDir) =>
+      path.resolve(projectRoot, targetDir),
+    ),
+  );
+
+  for (const targetDir of collectDocManagedDirs(projectRoot)) {
+    if (active.has(targetDir)) continue;
+
+    const state = readGeneratedDocBucketState(targetDir);
+    if (!state) continue;
+
+    for (const file of state.files) {
+      const filePath = path.join(targetDir, file);
+      if (!fs.existsSync(filePath)) continue;
+      fs.rmSync(filePath, { force: true });
+      log.dim(`  removed ${path.relative(projectRoot, filePath)}`);
+    }
+
+    const markerPath = getDocMarkerPath(targetDir);
+    if (fs.existsSync(markerPath)) {
+      fs.rmSync(markerPath, { force: true });
+    }
+  }
+}
+
 export function docsCommand(opts: { also?: string[] }): void {
   const manifestPath = findManifest();
   const projectRoot = manifestPath ? path.dirname(manifestPath) : process.cwd();
@@ -128,7 +230,15 @@ export function docsCommand(opts: { also?: string[] }): void {
 
   validateDocsManifest(manifest, projectRoot);
   const entries = Object.entries(manifest.docs.entries);
+  const currentSkillEntries = new Set(
+    Object.keys(manifest.skills.entries).flatMap((name) =>
+      manifest.skills.outputPaths.map((outputPath) => `${outputPath}/${name}/`),
+    ),
+  );
+
   if (entries.length === 0) {
+    cleanupStaleGeneratedDocs(projectRoot, []);
+    updateRootGitignore([...currentSkillEntries].sort());
     log.warn("No docs entries configured in vulyk.json.");
     return;
   }
@@ -199,11 +309,6 @@ export function docsCommand(opts: { also?: string[] }): void {
   }
 
   let generated = 0;
-  const currentSkillEntries = new Set(
-    Object.keys(manifest.skills.entries).flatMap((name) =>
-      manifest.skills.outputPaths.map((outputPath) => `${outputPath}/${name}/`),
-    ),
-  );
   const gitignoreEntries = new Set(
     getRootGitignoreEntries().filter((entry) => currentSkillEntries.has(entry)),
   );
@@ -214,8 +319,10 @@ export function docsCommand(opts: { also?: string[] }): void {
     gitignoreEntries.add(entry);
   }
 
+  const activeTargetDirs = new Set<string>();
   for (const [targetDir, bucket] of byTarget) {
     fs.mkdirSync(targetDir, { recursive: true });
+    activeTargetDirs.add(targetDir);
 
     const sections = bucket.docs.map((doc) => {
       const lines: string[] = [];
@@ -238,13 +345,18 @@ export function docsCommand(opts: { also?: string[] }): void {
       }
     }
 
+    const managedFiles = [AGENTS_FILE];
     for (const alias of bucket.aliases) {
       const aliasPath = path.join(targetDir, alias);
       fs.writeFileSync(aliasPath, `@${AGENTS_FILE}\n`);
+      managedFiles.push(alias);
       log.dim(`  Created ${path.relative(projectRoot, aliasPath)} alias`);
     }
+
+    writeGeneratedDocBucketState(targetDir, managedFiles);
   }
 
+  cleanupStaleGeneratedDocs(projectRoot, activeTargetDirs);
   updateRootGitignore([...gitignoreEntries].sort());
 
   log.print("");

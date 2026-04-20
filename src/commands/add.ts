@@ -13,6 +13,7 @@ import {
   stripPinnedRef,
   isRemoteSpecifier,
 } from "../lib/specifier.js";
+import { resolveSkillSourcePath } from "../lib/skills.js";
 
 function getPrimarySkillOutputPath(manifest: Manifest): string {
   return manifest.skills.outputPaths[0] ?? "skills";
@@ -40,6 +41,33 @@ function addSingle(
   );
 }
 
+function toRelativePosix(projectRoot: string, value: string): string {
+  return path.relative(projectRoot, value).replace(/\\/g, "/");
+}
+
+function addLocalSingle(
+  sourcePath: string,
+  manifest: Manifest,
+  projectRoot: string,
+): void {
+  const installedName = install(
+    sourcePath,
+    sourcePath,
+    manifest.skills.outputPaths,
+  );
+  manifest.skills.entries[installedName] = {
+    source: toRelativePosix(projectRoot, sourcePath),
+  };
+  if (!isEnabled(manifest, installedName)) {
+    log.warn(
+      `"${installedName}" added but not in enabled whitelist -- won't install on sync`,
+    );
+  }
+  log.success(
+    `Added "${installedName}" -> ${getPrimarySkillOutputPath(manifest)}`,
+  );
+}
+
 export async function addCommand(
   specifier: string,
   opts: { name?: string },
@@ -51,6 +79,7 @@ export async function addCommand(
   }
 
   const manifest = readManifest(manifestPath);
+  const projectRoot = path.dirname(manifestPath);
   if (manifest.skills.outputPaths.length === 0) {
     log.warn("No skill outputPaths configured in vulyk.json.");
     log.dim(`  Example: "skills": { "outputPaths": ["skills"] }`);
@@ -58,10 +87,31 @@ export async function addCommand(
   }
 
   if (!isRemoteSpecifier(specifier)) {
-    log.error(
-      "Skills must use a remote URL. Use a direct URL or a full GitHub blob/tree URL.",
-    );
-    process.exit(1);
+    const sourcePath = resolveSkillSourcePath(projectRoot, specifier);
+    if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isDirectory()) {
+      log.error(
+        `Local skill source must be an existing directory: ${specifier}`,
+      );
+      process.exit(1);
+    }
+
+    const detection = detect(sourcePath);
+    if (detection.type === "skill") {
+      addLocalSingle(sourcePath, manifest, projectRoot);
+    } else {
+      const skills = detection.skills ?? [];
+      if (skills.length === 0) {
+        log.error("No skills found at this path.");
+        process.exit(1);
+      }
+      log.info(`Found ${String(skills.length)} skills: ${skills.join(", ")}`);
+      for (const skillName of skills) {
+        addLocalSingle(path.join(sourcePath, skillName), manifest, projectRoot);
+      }
+    }
+
+    writeManifest(manifestPath, manifest);
+    return;
   }
 
   const name =

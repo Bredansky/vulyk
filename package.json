@@ -1,6 +1,6 @@
 {
   "name": "vulyk",
-  "version": "0.6.7",
+  "version": "0.7.0",
   "description": "Package manager for AI agent skills and agents",
   "keywords": [
     "ai",
@@ -29,6 +29,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "test": "node --import tsx --test tests/**/*.test.ts",
     "typecheck": "tsc",
     "dev": "tsx src/index.ts",
     "fix": "eslint . --fix --cache",

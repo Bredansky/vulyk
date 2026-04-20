@@ -17,7 +17,11 @@ import {
   resolveRuleForEntry,
   validateDocsManifest,
 } from "../lib/docs.js";
-import { validateSkillsManifest } from "../lib/skills.js";
+import {
+  isLocalSkillSource,
+  resolveSkillSourcePath,
+  validateSkillsManifest,
+} from "../lib/skills.js";
 
 function fetchLatest(repoCache: string, ref: string): string {
   try {
@@ -50,7 +54,7 @@ export async function updateCommand(name?: string): Promise<void> {
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
-  validateSkillsManifest(manifest);
+  validateSkillsManifest(manifest, projectRoot);
   validateDocsManifest(manifest, projectRoot);
 
   const skills = name
@@ -74,6 +78,16 @@ export async function updateCommand(name?: string): Promise<void> {
   if (skills.length > 0) log.print(color.dim("\nSkills:"));
 
   for (const [entryName, entry] of skills) {
+    if (isLocalSkillSource(projectRoot, entry.source)) {
+      install(
+        entryName,
+        resolveSkillSourcePath(projectRoot, entry.source),
+        manifest.skills.outputPaths,
+      );
+      log.print(`  ${color.dim(`${entryName} is local; refreshed from disk`)}`);
+      continue;
+    }
+
     const resolved = parseSource(entry.source);
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", entryName);
     if (fs.existsSync(tmpDir)) {

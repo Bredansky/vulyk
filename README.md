@@ -2,7 +2,7 @@
 
 > :bee: vulyk means _hive_ in Ukrainian
 
-`vulyk` is a lightweight, spec-driven package manager for AI agent skills, external agent docs, and generated `AGENTS.md` files. It installs skills from versioned sources or direct URLs, syncs them across clones, and keeps agent context reproducible.
+`vulyk` is a lightweight, spec-driven package manager for AI agent skills, tracked docs, and generated `AGENTS.md` files. It installs skills from local paths or remote sources, syncs them across clones, and keeps agent context reproducible.
 
 This repo can also host canonical skills under `skills/` that projects consume via pinned GitHub `tree/<commit>` URLs.
 
@@ -32,15 +32,17 @@ Creates a `vulyk.json` in the current directory.
 
 ### `vulyk add <specifier>`
 
-Adds a skill from a remote URL, installs it into every `skills.outputPaths` entry, and stores the canonical pinned URL in `skills.entries` for GitHub sources.
+Adds a skill from a local path or remote source, installs it into every `skills.outputPaths` entry, and stores the normalized source in `skills.entries`. GitHub sources are pinned to commits.
 
 ```sh
+vulyk add ./skills/my-local-skill
+vulyk add ./skills/my-pack
 vulyk add https://github.com/owner/repo/tree/main/skills/my-skill
 vulyk add https://github.com/owner/repo/tree/main/skills/my-skill --name my-skill
 vulyk add https://example.com/my-skill.zip
 ```
 
-If the path contains multiple skills, all detected skills are installed.
+If the path contains multiple skills, all detected skills are installed. Local sources are stored as repo-relative paths.
 
 ### `vulyk remove <name>`
 
@@ -52,7 +54,7 @@ Toggles a skill on or off without removing it. This uses the optional `skills.en
 
 ### `vulyk list`
 
-Lists installed skills, external docs, and configured paths.
+Lists installed skills, tracked docs, and configured paths.
 
 ### `vulyk diff [name]`
 
@@ -60,7 +62,7 @@ Shows what would change if you ran `update`.
 
 ### `vulyk update [name]`
 
-Updates git-backed skills and docs to the latest commit reachable from their configured ref. Direct URL sources are refreshed in place.
+Updates remote git-backed skills and docs to the latest commit reachable from their configured ref. Direct URL sources are refreshed in place. Local skills are refreshed from disk.
 
 ### `vulyk doc-add <url>`
 
@@ -115,7 +117,7 @@ It returns:
 
 ### `vulyk sync`
 
-The `npm install` for this manifest. It syncs skills, syncs remote docs into rule-selected output paths, and regenerates `AGENTS.md` plus aliases.
+The `npm install` for this manifest. It syncs local and remote skills, syncs remote docs into rule-selected output paths, and regenerates `AGENTS.md` plus aliases.
 
 ## :receipt: `vulyk.json`
 
@@ -127,6 +129,9 @@ The `npm install` for this manifest. It syncs skills, syncs remote docs into rul
     "entries": {
       "visual-explainer": {
         "source": "https://github.com/nicobailon/visual-explainer/tree/9a97a58.../plugins/visual-explainer"
+      },
+      "my-local-skill": {
+        "source": "skills/my-local-skill"
       }
     }
   },
@@ -158,7 +163,7 @@ The `npm install` for this manifest. It syncs skills, syncs remote docs into rul
 | ----------------------- | ----------------------------------------------- |
 | `skills.outputPaths`    | Directories where managed skills are installed  |
 | `skills.enabled`        | Optional whitelist of enabled skills            |
-| `skills.entries.<name>` | Skill source metadata                           |
+| `skills.entries.<name>` | Local or remote skill source metadata           |
 | `docs.rules`            | Optional path-scoped output and alias overrides |
 | `docs.entries`          | Local and external docs plus target metadata    |
 
@@ -166,18 +171,21 @@ The `npm install` for this manifest. It syncs skills, syncs remote docs into rul
 
 | Format                                         | Resolves to               |
 | ---------------------------------------------- | ------------------------- |
+| `./skills/my-skill`                            | A local skill directory   |
+| `./skills/my-pack`                             | A local skill collection  |
 | `https://github.com/owner/repo/tree/<ref>/...` | A GitHub-backed tree path |
 | `https://github.com/owner/repo/blob/<ref>/...` | A GitHub-backed file path |
 | `https://example.com/file.md`                  | A direct markdown URL     |
 | `https://example.com/archive.zip`              | A direct archive URL      |
 
-GitHub-backed sources in `vulyk.json` must use commit-pinned `blob` or `tree` URLs. During `add`, `sync`, and `update`, GitHub sources are normalized to pinned commit URLs. Direct non-GitHub URLs remain unchanged and are refreshed as-is.
+GitHub-backed remote sources in `vulyk.json` must use commit-pinned `blob` or `tree` URLs. During `add`, `sync`, and `update`, GitHub sources are normalized to pinned commit URLs. Local sources are stored as repo-relative paths.
 
 ## :broom: How managed files work
 
 - Each installed skill gets a `.vulyk` marker file.
 - Root `.gitignore` is updated with skill paths and generated doc files that are configured to be ignored.
 - Local skills without a `.vulyk` marker are never removed by `sync`.
+- Local skills are installed directly from their source directories, while remote skills are fetched into managed outputs.
 - Local docs are referenced directly from the manifest, while remote docs are materialized into the matched rule's `outputPaths`.
 
 ## :page_facing_up: License
