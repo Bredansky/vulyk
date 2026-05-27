@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 import { docsCommand } from "../src/commands/docs.js";
 import { docAddCommand } from "../src/commands/doc-add.js";
 import { docRemoveCommand } from "../src/commands/doc-remove.js";
@@ -13,6 +14,8 @@ import {
 import { disableCommand, enableCommand } from "../src/commands/toggle.js";
 import { removeCommand } from "../src/commands/remove.js";
 import { syncCommand } from "../src/commands/sync.js";
+import { updateCommand } from "../src/commands/update.js";
+import { getRepoCachePath } from "../src/lib/cache.js";
 import { findDocsForFile, findTargetsForDoc } from "../src/lib/docs.js";
 
 function makeTempProject(): string {
@@ -27,6 +30,21 @@ function writeJson(filePath: string, value: unknown): void {
 function writeFile(filePath: string, body: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, body, "utf8");
+}
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+}
+
+function gitDir(gitDirPath: string, args: string[]): string {
+  return execFileSync("git", ["--git-dir", gitDirPath, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
 }
 
 const createdDirs: string[] = [];
@@ -227,6 +245,79 @@ void test("docRemoveCommand removes a tracked doc entry", () => {
       "utf8",
     );
     assert.doesNotMatch(manifestBody, /"claude-statusline":/);
+  } finally {
+    process.chdir(initialCwd);
+  }
+});
+
+void test("updateCommand refreshes stale bare caches for pinned GitHub docs", async () => {
+  const projectRoot = makeTempProject();
+  const sourceRepo = makeTempProject();
+  createdDirs.push(projectRoot, sourceRepo);
+
+  git(sourceRepo, ["init", "-b", "main"]);
+  git(sourceRepo, ["config", "user.name", "Vulyk Test"]);
+  git(sourceRepo, ["config", "user.email", "vulyk@example.com"]);
+  writeFile(path.join(sourceRepo, "docs", "guide.md"), "# Old\n");
+  git(sourceRepo, ["add", "docs/guide.md"]);
+  git(sourceRepo, ["commit", "-m", "old doc"]);
+  const oldCommit = git(sourceRepo, ["rev-parse", "HEAD"]);
+
+  const fakeSource = `https://github.com/vulyk-test/stale-cache/blob/${
+    oldCommit
+  }/docs/guide.md`;
+  const fakeRepoUrl = "https://github.com/vulyk-test/stale-cache.git";
+  const repoCache = getRepoCachePath(fakeRepoUrl);
+  fs.rmSync(repoCache, { recursive: true, force: true });
+  createdDirs.push(repoCache);
+  fs.mkdirSync(path.dirname(repoCache), { recursive: true });
+  git(path.dirname(repoCache), ["clone", "--bare", sourceRepo, repoCache]);
+  gitDir(repoCache, ["config", "remote.origin.url", sourceRepo]);
+  try {
+    gitDir(repoCache, ["config", "--unset-all", "remote.origin.fetch"]);
+  } catch {
+    // Bare caches created by older vulyk versions may have no fetch refspec.
+  }
+
+  writeFile(path.join(sourceRepo, "docs", "guide.md"), "# New\n");
+  git(sourceRepo, ["add", "docs/guide.md"]);
+  git(sourceRepo, ["commit", "-m", "new doc"]);
+  const newCommit = git(sourceRepo, ["rev-parse", "HEAD"]);
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    skills: {
+      outputPaths: ["managed-skills"],
+      entries: {},
+    },
+    docs: {
+      outputPaths: ["docs/external"],
+      entries: {
+        guide: {
+          source: fakeSource,
+          targets: ["."],
+          description: "Remote guide.",
+        },
+      },
+    },
+  });
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    await updateCommand("guide");
+
+    assert.equal(
+      fs.readFileSync(
+        path.join(projectRoot, "docs", "external", "guide.md"),
+        "utf8",
+      ),
+      "# New\n",
+    );
+    const manifestBody = fs.readFileSync(
+      path.join(projectRoot, "vulyk.json"),
+      "utf8",
+    );
+    assert.match(manifestBody, new RegExp(newCommit));
   } finally {
     process.chdir(initialCwd);
   }

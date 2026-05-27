@@ -6,11 +6,11 @@ import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
 import {
   parseSource,
   fetchSource,
+  ensureGitRepoCache,
   type GitResolvedSource,
 } from "../lib/fetcher.js";
 import { install, resolvePath } from "../lib/installer.js";
 import { color, log } from "../lib/log.js";
-import { getRepoCachePath } from "../lib/cache.js";
 import { pinSpecifier, stripPinnedRef } from "../lib/specifier.js";
 import {
   isRemoteDocSource,
@@ -24,16 +24,8 @@ import {
   validateSkillsManifest,
 } from "../lib/skills.js";
 
-function fetchLatest(repoCache: string, ref: string): string {
-  try {
-    if (fs.existsSync(repoCache)) {
-      execSync(`git --git-dir="${repoCache}" fetch --all --tags`, {
-        stdio: "pipe",
-      });
-    }
-  } catch {
-    /* use cached */
-  }
+function fetchLatest(repoUrl: string, ref: string): string {
+  const repoCache = ensureGitRepoCache(repoUrl);
   return execSync(`git --git-dir="${repoCache}" rev-parse "${ref}"`, {
     encoding: "utf8",
     stdio: "pipe",
@@ -101,14 +93,16 @@ export async function updateCommand(name?: string): Promise<void> {
 
     try {
       if (isGitSource(resolved)) {
-        const repoCache = getRepoCachePath(resolved.repoUrl);
         const baseSpecifier = stripPinnedRef(entry.source);
         const baseResolved = parseSource(baseSpecifier);
         if (!isGitSource(baseResolved)) {
           throw new Error("Expected git source");
         }
 
-        const latestCommit = fetchLatest(repoCache, baseResolved.ref);
+        const latestCommit = fetchLatest(
+          baseResolved.repoUrl,
+          baseResolved.ref,
+        );
         const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
           ? resolved.ref
           : null;
@@ -167,14 +161,16 @@ export async function updateCommand(name?: string): Promise<void> {
       let normalizedSource = entry.source;
 
       if (isGitSource(resolved)) {
-        const repoCache = getRepoCachePath(resolved.repoUrl);
         const baseSpecifier = stripPinnedRef(entry.source);
         const baseResolved = parseSource(baseSpecifier);
         if (!isGitSource(baseResolved)) {
           throw new Error("Expected git source");
         }
 
-        const latestCommit = fetchLatest(repoCache, baseResolved.ref);
+        const latestCommit = fetchLatest(
+          baseResolved.repoUrl,
+          baseResolved.ref,
+        );
         const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
           ? resolved.ref
           : null;

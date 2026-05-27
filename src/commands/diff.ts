@@ -1,24 +1,18 @@
-import * as fs from "node:fs";
 import { execSync } from "node:child_process";
 import * as path from "node:path";
 import { findManifest, readManifest } from "../lib/manifest.js";
-import { parseSource, type GitResolvedSource } from "../lib/fetcher.js";
+import {
+  ensureGitRepoCache,
+  parseSource,
+  type GitResolvedSource,
+} from "../lib/fetcher.js";
 import { color, log } from "../lib/log.js";
-import { getRepoCachePath } from "../lib/cache.js";
 import { stripPinnedRef } from "../lib/specifier.js";
 import { isRemoteDocSource, validateDocsManifest } from "../lib/docs.js";
 import { isLocalSkillSource, validateSkillsManifest } from "../lib/skills.js";
 
-function fetchLatest(repoCache: string, ref: string): string {
-  try {
-    if (fs.existsSync(repoCache)) {
-      execSync(`git --git-dir="${repoCache}" fetch --all --tags`, {
-        stdio: "pipe",
-      });
-    }
-  } catch {
-    /* use cached */
-  }
+function fetchLatest(repoUrl: string, ref: string): string {
+  const repoCache = ensureGitRepoCache(repoUrl);
   return execSync(`git --git-dir="${repoCache}" rev-parse "${ref}"`, {
     encoding: "utf8",
     stdio: "pipe",
@@ -119,7 +113,6 @@ export function diffCommand(name?: string): void {
         continue;
       }
 
-      const repoCache = getRepoCachePath(resolved.repoUrl);
       const baseResolved = parseSource(stripPinnedRef(entry.source));
       if (!isGitSource(baseResolved)) {
         continue;
@@ -127,11 +120,12 @@ export function diffCommand(name?: string): void {
 
       let latestCommit: string;
       try {
-        latestCommit = fetchLatest(repoCache, baseResolved.ref);
+        latestCommit = fetchLatest(baseResolved.repoUrl, baseResolved.ref);
       } catch {
         log.error(`Could not resolve ref for "${entryName}"`);
         continue;
       }
+      const repoCache = ensureGitRepoCache(baseResolved.repoUrl);
 
       const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
         ? resolved.ref
@@ -175,7 +169,6 @@ export function diffCommand(name?: string): void {
         continue;
       }
 
-      const repoCache = getRepoCachePath(resolved.repoUrl);
       const baseResolved = parseSource(stripPinnedRef(entry.source));
       if (!isGitSource(baseResolved)) {
         continue;
@@ -183,11 +176,12 @@ export function diffCommand(name?: string): void {
 
       let latestCommit: string;
       try {
-        latestCommit = fetchLatest(repoCache, baseResolved.ref);
+        latestCommit = fetchLatest(baseResolved.repoUrl, baseResolved.ref);
       } catch {
         log.error(`Could not resolve ref for "${entryName}"`);
         continue;
       }
+      const repoCache = ensureGitRepoCache(baseResolved.repoUrl);
 
       const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
         ? resolved.ref

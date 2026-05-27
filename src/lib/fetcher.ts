@@ -18,6 +18,35 @@ export interface UrlResolvedSource {
 
 export type ResolvedSource = GitResolvedSource | UrlResolvedSource;
 
+export function refreshGitRepoCache(repoCache: string): void {
+  execFileSync(
+    "git",
+    [
+      "--git-dir",
+      repoCache,
+      "fetch",
+      "origin",
+      "+refs/heads/*:refs/heads/*",
+      "+refs/tags/*:refs/tags/*",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+}
+
+export function ensureGitRepoCache(repoUrl: string): string {
+  const repoCache = getRepoCachePath(repoUrl);
+
+  if (!fs.existsSync(repoCache)) {
+    execFileSync("git", ["clone", "--bare", repoUrl, repoCache], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } else {
+    refreshGitRepoCache(repoCache);
+  }
+
+  return repoCache;
+}
+
 function isDirectUrl(specifier: string): boolean {
   if (!specifier.startsWith("http://") && !specifier.startsWith("https://")) {
     return false;
@@ -67,17 +96,7 @@ export function parseSource(specifier: string): ResolvedSource {
 }
 
 function fetchGitSource(resolved: GitResolvedSource, destDir: string): string {
-  const repoCache = getRepoCachePath(resolved.repoUrl);
-
-  if (!fs.existsSync(repoCache)) {
-    execSync(`git clone --bare "${resolved.repoUrl}" "${repoCache}"`, {
-      stdio: "pipe",
-    });
-  } else {
-    execSync(`git --git-dir="${repoCache}" fetch --all --tags`, {
-      stdio: "pipe",
-    });
-  }
+  const repoCache = ensureGitRepoCache(resolved.repoUrl);
 
   const commit = execSync(
     `git --git-dir="${repoCache}" rev-parse "${resolved.ref}"`,
