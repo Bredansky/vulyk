@@ -72,15 +72,6 @@ program
   });
 
 program
-  .command("docs")
-  .description(
-    "Deprecated: use `vulyk agents` instead. AGENTS.md generation is now part of `agents`.",
-  )
-  .action(async () => {
-    await agentsCommand();
-  });
-
-program
   .command("docs-for <file>")
   .description("List tracked docs that apply to a specific file")
   .action((file: string) => {
