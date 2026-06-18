@@ -1,9 +1,12 @@
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { findManifest, readManifest } from "../lib/manifest.js";
-import { isEnabled } from "../lib/whitelist.js";
 import { color, log } from "../lib/log.js";
-import { isRemoteDocSource, validateDocsManifest } from "../lib/docs.js";
-import { isLocalSkillSource, validateSkillsManifest } from "../lib/skills.js";
+import { entriesByGroup, isEnabled } from "../lib/groups.js";
+
+function isLocalSource(projectRoot: string, source: string): boolean {
+  return fs.existsSync(path.resolve(projectRoot, source));
+}
 
 export function listCommand(): void {
   const manifestPath = findManifest();
@@ -14,55 +17,41 @@ export function listCommand(): void {
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
-  validateSkillsManifest(manifest, projectRoot);
-  validateDocsManifest(manifest, projectRoot);
+  const grouped = entriesByGroup(manifest);
 
-  const skills = Object.entries(manifest.entries).filter(
-    ([, entry]) => entry.type === "skill",
-  );
-  const docs = Object.entries(manifest.entries).filter(
-    ([, entry]) => entry.type === "doc",
-  );
+  if (grouped.size === 0) {
+    log.dim("  no entries");
+    log.print("");
+    return;
+  }
 
-  log.blue("\nSkills:");
-  if (skills.length === 0) {
-    log.dim("  none");
-  } else {
-    for (const [name, entry] of skills) {
-      const status = isEnabled(manifest, name)
-        ? color.green("+")
-        : color.red("-");
+  for (const [groupName, entries] of grouped) {
+    log.blue(`\n${groupName}:`);
+    if (entries.length === 0) {
+      log.dim("  none");
+      continue;
+    }
+    for (const [name, entry] of entries) {
+      const enabled = isEnabled(manifest, name);
+      const status = enabled ? color.green("+") : color.red("-");
+      const sourceKind = isLocalSource(projectRoot, entry.source)
+        ? "local"
+        : "external";
       log.print(
-        `  ${status} ${name} ${color.dim(isLocalSkillSource(projectRoot, entry.source) ? "local" : "external")} ${color.dim(entry.source)}`,
+        `  ${status} ${name} ${color.dim(sourceKind)} ${color.dim(entry.source)}`,
       );
     }
   }
 
-  if (docs.length > 0) {
-    log.blue("\nDocs:");
-    for (const [name, entry] of docs) {
-      if (entry.type !== "doc") continue;
+  if (Object.keys(manifest.groups).length > 0) {
+    log.blue("\nGroups:");
+    for (const [name, group] of Object.entries(manifest.groups)) {
+      const outPaths = group.outputPaths?.join(", ") ?? "(default)";
+      const enabledCount = group.enabled?.length ?? 0;
+      const disabledCount = group.disabled?.length ?? 0;
+      const counts = `enabled:${String(enabledCount)} disabled:${String(disabledCount)}`;
       log.print(
-        `  ${color.green("+")} ${name} ${color.dim(isRemoteDocSource(projectRoot, entry.source) ? "external" : "local")} ${color.dim(entry.source)} ${color.dim(`-> ${entry.targets.join(", ")}`)}`,
-      );
-    }
-  }
-
-  log.blue("\nPaths:");
-  if (
-    manifest.skillOutputPaths.length === 0 &&
-    Object.keys(manifest.docRules).length === 0
-  ) {
-    log.dim("  none");
-  } else {
-    if (manifest.skillOutputPaths.length > 0) {
-      log.print(
-        `  ${color.dim("skill outputs:")} ${manifest.skillOutputPaths.join(", ")}`,
-      );
-    }
-    if (Object.keys(manifest.docRules).length > 0) {
-      log.print(
-        `  ${color.dim("doc rules:")} ${Object.keys(manifest.docRules).join(", ")}`,
+        `  ${color.dim(name)} ${color.dim(`outputPaths: ${outPaths}`)} ${color.dim(counts)}`,
       );
     }
   }

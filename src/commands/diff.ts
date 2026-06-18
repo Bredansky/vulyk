@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { findManifest, readManifest } from "../lib/manifest.js";
 import {
   ensureGitRepoCache,
@@ -8,8 +9,6 @@ import {
 } from "../lib/fetcher.js";
 import { color, log } from "../lib/log.js";
 import { stripPinnedRef } from "../lib/specifier.js";
-import { isRemoteDocSource, validateDocsManifest } from "../lib/docs.js";
-import { isLocalSkillSource, validateSkillsManifest } from "../lib/skills.js";
 
 function fetchLatest(repoUrl: string, ref: string): string {
   const repoCache = ensureGitRepoCache(repoUrl);
@@ -27,7 +26,6 @@ function showDiff(
   isFile: boolean,
 ): void {
   try {
-    const pathFilter = subPath ? `-- "${subPath}"` : "";
     if (isFile && subPath) {
       const diff = execSync(
         `git --git-dir="${repoCache}" diff ${from}..${to} -- "${subPath}"`,
@@ -41,6 +39,7 @@ function showDiff(
         }
       }
     } else {
+      const pathFilter = subPath ? `-- "${subPath}"` : "";
       const stat = execSync(
         `git --git-dir="${repoCache}" diff --stat ${from}..${to} ${pathFilter}`,
         { encoding: "utf8", stdio: "pipe" },
@@ -67,6 +66,10 @@ function isGitSource(
   return value.kind === "git";
 }
 
+function isLocalSource(projectRoot: string, source: string): boolean {
+  return fs.existsSync(path.resolve(projectRoot, source));
+}
+
 export function diffCommand(name?: string): void {
   const manifestPath = findManifest();
   if (!manifestPath) {
@@ -76,13 +79,9 @@ export function diffCommand(name?: string): void {
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
-  validateSkillsManifest(manifest, projectRoot);
-  validateDocsManifest(manifest, projectRoot);
 
   const entries = name
-    ? Object.entries(manifest.entries).filter(
-        ([entryName]) => entryName === name,
-      )
+    ? Object.entries(manifest.entries).filter(([n]) => n === name)
     : Object.entries(manifest.entries);
 
   if (entries.length === 0) {
@@ -93,109 +92,55 @@ export function diffCommand(name?: string): void {
   let hasUpdates = false;
 
   for (const [entryName, entry] of entries) {
-    if (entry.type === "skill") {
-      if (isLocalSkillSource(projectRoot, entry.source)) {
-        log.print(`  ${color.dim(`${entryName} is local; diff unavailable`)}`);
-        continue;
-      }
+    if (isLocalSource(projectRoot, entry.source)) {
+      log.print(`  ${color.dim(`${entryName} is local; diff unavailable`)}`);
+      continue;
+    }
 
-      const resolved = parseSource(entry.source);
-      if (!isGitSource(resolved)) {
-        log.print(
-          `  ${color.blue(entryName)} ${color.dim("direct URL source; diff unavailable")}`,
-        );
-        continue;
-      }
-
-      const baseResolved = parseSource(stripPinnedRef(entry.source));
-      if (!isGitSource(baseResolved)) {
-        continue;
-      }
-
-      let latestCommit: string;
-      try {
-        latestCommit = fetchLatest(baseResolved.repoUrl, baseResolved.ref);
-      } catch {
-        log.error(`Could not resolve ref for "${entryName}"`);
-        continue;
-      }
-      const repoCache = ensureGitRepoCache(baseResolved.repoUrl);
-
-      const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
-        ? resolved.ref
-        : null;
-      if (currentCommit && latestCommit === currentCommit) {
-        log.print(
-          `  ${color.dim(`${entryName} up to date (${latestCommit.slice(0, 7)})`)}`,
-        );
-        continue;
-      }
-
-      hasUpdates = true;
-      const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
+    const resolved = parseSource(entry.source);
+    if (!isGitSource(resolved)) {
       log.print(
-        `  ${color.blue(entryName)} ${color.dim(`${prev} -> ${latestCommit.slice(0, 7)}`)}`,
+        `  ${color.blue(entryName)} ${color.dim("direct URL source; diff unavailable")}`,
       );
-      if (currentCommit) {
-        showDiff(
-          repoCache,
-          currentCommit,
-          latestCommit,
-          baseResolved.subPath,
-          false,
-        );
-      }
-    } else {
-      if (!isRemoteDocSource(projectRoot, entry.source)) {
-        log.print(`  ${color.dim(`${entryName} is local; diff unavailable`)}`);
-        continue;
-      }
-      const resolved = parseSource(entry.source);
-      if (!isGitSource(resolved)) {
-        log.print(
-          `  ${color.blue(entryName)} ${color.dim("direct URL source; diff unavailable")}`,
-        );
-        continue;
-      }
+      continue;
+    }
 
-      const baseResolved = parseSource(stripPinnedRef(entry.source));
-      if (!isGitSource(baseResolved)) {
-        continue;
-      }
+    const baseResolved = parseSource(stripPinnedRef(entry.source));
+    if (!isGitSource(baseResolved)) continue;
 
-      let latestCommit: string;
-      try {
-        latestCommit = fetchLatest(baseResolved.repoUrl, baseResolved.ref);
-      } catch {
-        log.error(`Could not resolve ref for "${entryName}"`);
-        continue;
-      }
-      const repoCache = ensureGitRepoCache(baseResolved.repoUrl);
+    let latestCommit: string;
+    try {
+      latestCommit = fetchLatest(baseResolved.repoUrl, baseResolved.ref);
+    } catch {
+      log.error(`Could not resolve ref for "${entryName}"`);
+      continue;
+    }
 
-      const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
-        ? resolved.ref
-        : null;
-      if (currentCommit && latestCommit === currentCommit) {
-        log.print(
-          `  ${color.dim(`${entryName} up to date (${latestCommit.slice(0, 7)})`)}`,
-        );
-        continue;
-      }
+    const repoCache = ensureGitRepoCache(baseResolved.repoUrl);
+    const currentCommit = /^[0-9a-f]{7,}$/.exec(resolved.ref)
+      ? resolved.ref
+      : null;
 
-      hasUpdates = true;
-      const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
+    if (currentCommit && latestCommit === currentCommit) {
       log.print(
-        `  ${color.blue(entryName)} ${color.dim(`${prev} -> ${latestCommit.slice(0, 7)}`)}`,
+        `  ${color.dim(`${entryName} up to date (${latestCommit.slice(0, 7)})`)}`,
       );
-      if (currentCommit) {
-        showDiff(
-          repoCache,
-          currentCommit,
-          latestCommit,
-          baseResolved.subPath,
-          true,
-        );
-      }
+      continue;
+    }
+
+    hasUpdates = true;
+    const prev = currentCommit?.slice(0, 7) ?? resolved.ref;
+    log.print(
+      `  ${color.blue(entryName)} ${color.dim(`${prev} -> ${latestCommit.slice(0, 7)}`)}`,
+    );
+    if (currentCommit) {
+      showDiff(
+        repoCache,
+        currentCommit,
+        latestCommit,
+        baseResolved.subPath,
+        !entry.targets, // skill-style entries are directories (not file)
+      );
     }
   }
 

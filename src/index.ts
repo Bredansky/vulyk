@@ -2,28 +2,21 @@ import { Command } from "commander";
 import { initCommand } from "./commands/init.js";
 import { addCommand } from "./commands/add.js";
 import { removeCommand } from "./commands/remove.js";
-import { enableCommand, disableCommand } from "./commands/toggle.js";
+import { enableCommand } from "./commands/enable.js";
+import { disableCommand } from "./commands/disable.js";
 import { listCommand } from "./commands/list.js";
 import { agentsCommand } from "./commands/agents.js";
 import { updateCommand } from "./commands/update.js";
 import { diffCommand } from "./commands/diff.js";
-import { docsCommand } from "./commands/docs.js";
-import { docAddCommand } from "./commands/doc-add.js";
-import { docRemoveCommand } from "./commands/doc-remove.js";
-import {
-  docRuleRemoveCommand,
-  docRuleSetCommand,
-} from "./commands/doc-rule.js";
 import { docsForCommand } from "./commands/docs-for.js";
-import {
-  skillOutputAddCommand,
-  skillOutputRemoveCommand,
-} from "./commands/skill-output.js";
 import { targetsForCommand } from "./commands/targets-for.js";
 
 const program = new Command();
 
-program.name("vulyk").description("npm for AI agent skills").version("0.8.0");
+program
+  .name("vulyk")
+  .description("Package manager for AI agent skills and tracked docs")
+  .version("0.9.0");
 
 program
   .command("init")
@@ -32,43 +25,36 @@ program
 
 program
   .command("add <specifier>")
-  .description("Add a skill from a local path or remote URL")
-  .option("-n, --name <name>", "override the skill name")
-  .action(async (specifier: string, opts: { name?: string }) => {
-    await addCommand(specifier, { name: opts.name });
-  });
+  .description("Add a skill or doc from a local path or remote URL")
+  .option("-n, --name <name>", "override the entry name")
+  .option("-g, --group <name>", "force a specific group")
+  .action(
+    async (specifier: string, opts: { name?: string; group?: string }) => {
+      await addCommand(specifier, { name: opts.name, group: opts.group });
+    },
+  );
 
 program
   .command("remove <name>")
-  .description("Remove a skill")
+  .description("Remove an entry")
   .action(removeCommand);
 
 program
-  .command("skill-output-add <path>")
-  .description("Add a managed skill output path")
-  .action(skillOutputAddCommand);
-
-program
-  .command("skill-output-remove <path>")
-  .description("Remove a managed skill output path")
-  .action(skillOutputRemoveCommand);
-
-program
   .command("enable <name>")
-  .description("Enable a skill")
-  .action(async (name: string) => {
-    await enableCommand(name);
+  .description("Re-enable a disabled entry")
+  .action((name: string) => {
+    enableCommand(name);
   });
 
 program
   .command("disable <name>")
-  .description("Disable a skill")
+  .description("Disable an entry (kept in manifest, not synced)")
   .action(disableCommand);
 
 program
   .command("list")
   .alias("ls")
-  .description("List managed skills and tracked docs")
+  .description("List entries grouped by group")
   .action(listCommand);
 
 program
@@ -80,74 +66,18 @@ program
 
 program
   .command("update [name]")
-  .description("Update skills/docs to latest")
+  .description("Update entries to latest")
   .action(async (name: string | undefined) => {
     await updateCommand(name);
   });
 
 program
-  .command("doc-add <specifier>")
-  .description("Add an external doc from a remote source")
-  .option("-t, --targets <paths...>", "target paths this doc applies to")
-  .option("-d, --description <desc>", "description for AGENTS.md")
-  .action(
-    (specifier: string, opts: { targets?: string[]; description?: string }) => {
-      docAddCommand(specifier, {
-        targets: opts.targets ?? [],
-        description: opts.description,
-      });
-    },
-  );
-
-program
-  .command("doc-remove <name>")
-  .description("Remove a tracked doc")
-  .action(docRemoveCommand);
-
-program
-  .command("doc-rule-set <name>")
-  .description("Create or replace a docs rule")
-  .requiredOption("-m, --match <patterns...>", "target match patterns")
-  .option("-o, --output-paths <paths...>", "paths for fetched external docs")
-  .option("--also <filenames...>", "extra alias files for matched targets")
-  .option("--gitignore-generated", "gitignore generated files for this rule")
-  .option(
-    "--no-gitignore-generated",
-    "do not gitignore generated files for this rule",
-  )
-  .action(
-    (
-      name: string,
-      opts: {
-        match: string[];
-        outputPaths?: string[];
-        also?: string[];
-        gitignoreGenerated?: boolean;
-      },
-    ) => {
-      docRuleSetCommand(name, {
-        match: opts.match,
-        outputPaths: opts.outputPaths,
-        also: opts.also,
-        gitignoreGenerated: opts.gitignoreGenerated,
-      });
-    },
-  );
-
-program
-  .command("doc-rule-remove <name>")
-  .description("Remove a docs rule")
-  .action(docRuleRemoveCommand);
-
-program
   .command("docs")
-  .description("Generate AGENTS.md files from tracked docs")
-  .option(
-    "--also <filenames...>",
-    "add extra alias files importing AGENTS.md for this run",
+  .description(
+    "Deprecated: use `vulyk agents` instead. AGENTS.md generation is now part of `agents`.",
   )
-  .action((opts: { also?: string[] }) => {
-    docsCommand({ also: opts.also });
+  .action(async () => {
+    await agentsCommand();
   });
 
 program
@@ -166,7 +96,7 @@ program
 
 program
   .command("agents")
-  .description("Reinstall all enabled skills")
+  .description("Sync all enabled entries to their output paths")
   .action(async () => {
     await agentsCommand();
   });

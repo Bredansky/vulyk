@@ -13,7 +13,7 @@ export function initCommand(): void {
 
   initManifest(filePath);
   log.success(`Created ${MANIFEST_FILE}`);
-  log.dim(
-    `  Set skill output paths with: "skills": { "outputPaths": ["skills"] }`,
-  );
+  log.dim(`  Add a skill: vulyk add <github-url>`);
+  log.dim(`  Add a doc:   vulyk add <github-url-to-markdown>`);
+  log.dim(`  See: vulyk.json for groups and entries`);
 }

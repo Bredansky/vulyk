@@ -26,6 +26,8 @@ export function writeManifest(filePath: string, manifest: Manifest): void {
 }
 
 export function initManifest(filePath: string): Manifest {
+  // Start with empty groups + entries. Users declare groups,
+  // then `vulyk add <source>` auto-detects the right one.
   const manifest = ManifestSchema.parse({});
   writeManifest(filePath, manifest);
   return manifest;

@@ -2,69 +2,68 @@
 
 > :bee: vulyk means _hive_ in Ukrainian
 
-`vulyk` is a lightweight, spec-driven package manager for AI agent skills, tracked docs, and generated `AGENTS.md` files. It installs skills from local paths or remote sources, installs them across clones, and keeps agent context reproducible.
+`vulyk` is a lightweight, spec-driven package manager for AI agent skills, tracked docs, and generated `AGENTS.md` files. It installs skills from local paths or remote sources, keeps agent context reproducible, and stays out of your way.
 
 This repo can also host canonical skills under `skills/` that projects consume via pinned GitHub `tree/<commit>` URLs.
 
 ## :package: Install
 
 ```sh
-npm install -g vulyk
+npx github:Bredansky/vulyk ...
 ```
+
+Vulyk is a GitHub-only package. All commands are run via `npx github:Bredansky/vulyk` — no install step.
 
 ## :zap: Quick start
 
 ```sh
 cd my-project
-vulyk init
-vulyk add "https://github.com/nicobailon/visual-explainer/tree/main/plugins/visual-explainer"
-vulyk doc-add "https://github.com/alan2207/bulletproof-react/blob/main/docs/project-structure.md" \
-  --targets src \
-  --description "Project structure conventions."
-vulyk agents
+npx github:Bredansky/vulyk init
+
+# Add a skill
+npx github:Bredansky/vulyk add \
+  "https://github.com/nicobailon/visual-explainer/tree/main/plugins/visual-explainer"
+
+# Add a tracked doc that generates an AGENTS.md in src/
+npx github:Bredansky/vulyk add \
+  "https://github.com/alan2207/bulletproof-react/blob/main/docs/project-structure.md" \
+  --group docs --targets src --description "Project structure conventions."
+
+# Install everything from the manifest
+npx github:Bredansky/vulyk agents
 ```
 
 ## :hammer_and_wrench: Commands
 
 ### `vulyk init`
 
-Creates a `vulyk.json` in the current directory.
+Creates a `vulyk.json` in the current directory with a `skills` group (default output `.agents/skills`) and a `docs` group (default output `docs/external`).
 
 ### `vulyk add <specifier>`
 
-Adds a skill from a local path or remote source, installs it into every `skills.outputPaths` entry, and stores the normalized source in `skills.entries`. GitHub sources are pinned to commits.
+Adds an entry from a local path or remote source. Auto-detects the group by inspecting the source against each group's `validate` block (e.g. `mustContain: ["SKILL.md"]` for skills, `fileExtension: ".md"` for docs). If the source is a directory containing multiple matching sub-sources (a "pack"), every sub-source is added as a separate entry.
 
 ```sh
 vulyk add ./skills/my-local-skill
-vulyk add ./skills/my-pack
+vulyk add ./skills/my-pack                    # expands to per-skill entries
 vulyk add https://github.com/owner/repo/tree/main/skills/my-skill
-vulyk add https://github.com/owner/repo/tree/main/skills/my-skill --name my-skill
-vulyk add https://example.com/my-skill.zip
+vulyk add https://github.com/owner/repo/blob/main/docs/my-doc.md --targets src
+vulyk add https://example.com/archive.zip
 ```
 
-If the path contains multiple skills, all detected skills are installed. Local sources are stored as repo-relative paths.
+GitHub sources are pinned to commits on add. Local sources are stored as repo-relative paths.
 
 ### `vulyk remove <name>`
 
-Removes a managed skill and deletes it from `skills.entries`.
-
-### `vulyk skill-output-add <path>` / `vulyk skill-output-remove <path>`
-
-Adds or removes a path in `skills.outputPaths`.
-
-```sh
-vulyk skill-output-add .claude/skills
-vulyk skill-output-add skills
-vulyk skill-output-remove .claude/skills
-```
+Removes an entry from the manifest and uninstalls its installed files on the next `vulyk agents` run.
 
 ### `vulyk enable <name>` / `vulyk disable <name>`
 
-Toggles a skill on or off without removing it. This uses the optional `skills.enabled` whitelist.
+Opt a single entry in or out without removing it. Empty `enabled` array on a group means "all entries install" (opt-out model). The disabled list always wins over the enabled list.
 
 ### `vulyk list`
 
-Lists installed skills, tracked docs, and configured paths.
+Lists entries grouped by their `group` field, the resolved `outputPaths`, and the per-group `enabled`/`disabled` sets.
 
 ### `vulyk diff [name]`
 
@@ -72,152 +71,111 @@ Shows what would change if you ran `update`.
 
 ### `vulyk update [name]`
 
-Updates remote git-backed skills and docs to the latest commit reachable from their configured ref. Direct URL sources are refreshed in place. Local skills are refreshed from disk.
-
-### `vulyk doc-add <url>`
-
-Tracks an external markdown doc in `docs.entries`.
-
-```sh
-vulyk doc-add "https://github.com/alan2207/bulletproof-react/blob/main/docs/project-structure.md" \
-  --targets src \
-  --description "Project structure conventions."
-```
-
-### `vulyk doc-remove <name>`
-
-Removes a tracked doc from `docs.entries`.
-
-```sh
-vulyk doc-remove claude-statusline
-```
-
-### `vulyk doc-rule-set <name>` / `vulyk doc-rule-remove <name>`
-
-Creates, replaces, or removes a rule in `docs.rules`.
-
-```sh
-vulyk doc-rule-set claude \
-  --match ".claude/**" \
-  --output-paths docs/external \
-  --also CLAUDE.md
-vulyk doc-rule-remove claude
-```
-
-### `vulyk docs`
-
-Generates `AGENTS.md` from tracked docs in `docs.entries`.
-
-```sh
-vulyk docs
-vulyk docs --also CLAUDE.md
-```
-
-This uses `docs.rules` to determine where generated aliases should appear and whether generated files should be gitignored.
-Targets without a matching rule fall back to `docs/external`, no aliases, and gitignored generated files.
-
-### `vulyk docs-for <file>`
-
-Prints JSON for tracked docs that apply to a specific file. This is useful when a skill or review workflow wants to answer "which docs should I compare this file against?"
-
-```sh
-vulyk docs-for .claude/hooks/context-statusline.cjs
-vulyk docs-for src/features/editor/poster.tsx
-```
-
-It matches:
-
-- local docs declared in `docs.entries`
-- external docs declared in `docs.entries`
-- exact file targets and directory targets
-
-### `vulyk targets-for <doc>`
-
-Prints JSON for tracked targets declared by a specific doc. This is useful when a doc changes and you want to know which files or folders may need review.
-
-```sh
-vulyk targets-for docs/agent-hooks.md
-vulyk targets-for docs/external/claude-statusline.md
-```
-
-It returns:
-
-- the declared `targets` from `docs.entries`
-- target kinds for each path: `directory`, `file`, or `glob`
+Updates remote git-backed entries to the latest commit reachable from their configured ref. Local entries are refreshed from disk. On success, remote sources are repinned in `vulyk.json`.
 
 ### `vulyk agents`
 
-The `npm install` for this manifest. It installs local and remote skills, installs remote docs into rule-selected output paths, and regenerates `AGENTS.md` plus aliases.
+The `npm install` for this manifest. For every enabled entry: install from source, generate `AGENTS.md` (if `targets` is set), refresh gitignore. Prunes any file in a `.vulyk` manifest that's no longer claimed by an active entry.
+
+### `vulyk docs`
+
+> **Deprecated.** AGENTS.md generation is now part of `vulyk agents`. Kept as an alias for one release.
+
+### `vulyk docs-for <file>`
+
+Prints JSON for tracked docs that apply to a specific file. Useful when a skill or review workflow wants to answer "which docs should I compare this file against?"
+
+```sh
+vulyk docs-for src/features/editor/poster.tsx
+```
+
+### `vulyk targets-for <doc>`
+
+Prints JSON for tracked targets declared by a specific doc. Useful when a doc changes and you want to know which files or folders may need review.
+
+```sh
+vulyk targets-for docs/external/project-structure.md
+```
 
 ## :receipt: `vulyk.json`
 
 ```json
 {
-  "skills": {
-    "outputPaths": ["skills"],
-    "enabled": ["visual-explainer"],
-    "entries": {
-      "visual-explainer": {
-        "source": "https://github.com/nicobailon/visual-explainer/tree/9a97a58.../plugins/visual-explainer"
-      },
-      "my-local-skill": {
-        "source": "skills/my-local-skill"
-      }
+  "groups": {
+    "skills": {
+      "outputPaths": [".agents/skills"],
+      "validate": { "mustContain": ["SKILL.md"] },
+      "gitignoreGenerated": true
+    },
+    "docs": {
+      "outputPaths": ["docs/external"],
+      "validate": { "fileExtension": ".md" },
+      "gitignoreGenerated": true,
+      "rules": [{ "match": ["src/**"], "outputPaths": ["docs/external/src"] }]
     }
   },
-  "docs": {
-    "rules": {
-      "claude": {
-        "match": [".claude/**"],
-        "outputPaths": ["docs/external"],
-        "also": ["CLAUDE.md"]
-      }
+  "entries": {
+    "visual-explainer": {
+      "source": "https://github.com/nicobailon/visual-explainer/tree/9a97a58.../plugins/visual-explainer",
+      "group": "skills"
     },
-    "entries": {
-      "api-routes": {
-        "source": "docs/api-routes.md",
-        "targets": ["src/app/api"],
-        "description": "API route conventions and patterns."
-      },
-      "project-structure": {
-        "source": "https://github.com/alan2207/bulletproof-react/blob/c66ea06.../docs/project-structure.md",
-        "targets": ["src"],
-        "description": "Project structure conventions and patterns."
-      }
+    "my-local-skill": {
+      "source": "skills/my-local-skill",
+      "group": "skills"
+    },
+    "api-routes": {
+      "source": "docs/api-routes.md",
+      "group": "docs",
+      "targets": ["src/app/api"],
+      "description": "API route conventions and patterns."
+    },
+    "project-structure": {
+      "source": "https://github.com/alan2207/bulletproof-react/blob/c66ea06.../docs/project-structure.md",
+      "group": "docs",
+      "targets": ["src"],
+      "description": "Project structure conventions and patterns."
     }
   }
 }
 ```
 
-| Field                   | Description                                     |
-| ----------------------- | ----------------------------------------------- |
-| `skills.outputPaths`    | Directories where managed skills are installed  |
-| `skills.enabled`        | Optional whitelist of enabled skills            |
-| `skills.entries.<name>` | Local or remote skill source metadata           |
-| `docs.rules`            | Optional path-scoped output and alias overrides |
-| `docs.entries`          | Local and external docs plus target metadata    |
+| Field                              | Description                                                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `groups.<name>.outputPaths`        | Directories where this group's entries are installed                                                              |
+| `groups.<name>.validate`           | `mustContain` (required files) and/or `fileExtension` (expected ext) used by `vulyk add` to auto-detect the group |
+| `groups.<name>.rules`              | Optional per-group `[{ match, outputPaths }]` overrides that take precedence over the group default               |
+| `groups.<name>.gitignoreGenerated` | Whether to gitignore the group's installed files (per-group default; can be overridden per entry)                 |
+| `groups.<name>.enabled`            | Per-group opt-in whitelist. Empty array = all entries install (opt-out).                                          |
+| `groups.<name>.disabled`           | Per-group opt-out list. Always wins over `enabled`.                                                               |
+| `entries.<name>.source`            | Local repo-relative path or remote URL                                                                            |
+| `entries.<name>.group`             | Name of the group this entry belongs to                                                                           |
+| `entries.<name>.outputPaths`       | Optional per-entry override of the group's `outputPaths`                                                          |
+| `entries.<name>.targets`           | Optional list of dirs where `AGENTS.md` should be generated for this entry (doc entries only)                     |
+| `entries.<name>.description`       | Optional one-line summary, used in generated `AGENTS.md` sections                                                 |
+| `entries.<name>.also`              | Optional extra alias filenames (`@AGENTS.md` imports) generated in each target dir                                |
+
+Resolution order for `outputPaths`: `entry.outputPaths` → `group.rules[match].outputPaths` (when source matches a rule) → `group.outputPaths` → `["docs/external"]`.
 
 ## :link: Specifier format
 
-| Format                                         | Resolves to               |
-| ---------------------------------------------- | ------------------------- |
-| `./skills/my-skill`                            | A local skill directory   |
-| `./skills/my-pack`                             | A local skill collection  |
-| `https://github.com/owner/repo/tree/<ref>/...` | A GitHub-backed tree path |
-| `https://github.com/owner/repo/blob/<ref>/...` | A GitHub-backed file path |
-| `https://example.com/file.md`                  | A direct markdown URL     |
-| `https://example.com/archive.zip`              | A direct archive URL      |
+| Format                                         | Resolves to                                             |
+| ---------------------------------------------- | ------------------------------------------------------- |
+| `./skills/my-skill`                            | A local skill directory                                 |
+| `./skills/my-pack`                             | A local skill collection (expands to per-skill entries) |
+| `https://github.com/owner/repo/tree/<ref>/...` | A GitHub-backed tree path                               |
+| `https://github.com/owner/repo/blob/<ref>/...` | A GitHub-backed file path                               |
+| `https://example.com/file.md`                  | A direct markdown URL                                   |
+| `https://example.com/archive.zip`              | A direct archive URL                                    |
 
 GitHub-backed remote sources in `vulyk.json` must use commit-pinned `blob` or `tree` URLs. During `add`, `sync`, and `update`, GitHub sources are normalized to pinned commit URLs. Local sources are stored as repo-relative paths.
 
 ## :broom: How managed files work
 
-- Each installed skill gets a `.vulyk` marker file.
-- Root `.gitignore` is updated with skill paths and generated doc files that are configured to be ignored.
-- Local skills without a `.vulyk` marker are never removed by `agents`.
-- Local skills are installed directly from their source directories, while remote skills are fetched into managed outputs.
-- If a local skill already lives under one of the configured `skills.outputPaths`, Vulyk preserves that source directory in place instead of copying it into itself or gitignoring it.
-- Local docs are referenced directly from the manifest, while remote docs are materialized into the matched rule's `outputPaths`.
+- Every vulyk-managed location has a `.vulyk` manifest listing exactly the files vulyk created there. The manifest is the source of truth for cleanup.
+- **Cleanup is conservative.** `vulyk agents` only removes files that are listed in a `.vulyk` manifest AND no longer claimed by an enabled entry. Files you put in an output path yourself are never touched, even if they have a `.md` extension.
+- **The root `.gitignore`** is updated with paths to vulyk-managed copies that aren't part of your own source tree. A local source path is never gitignored — even if it happens to share a path with one of the configured `outputPaths`.
+- **AGENTS.md generation.** For every doc entry with a `targets` list, a section is appended to the `AGENTS.md` in each target dir. Aliases declared via `entry.also` (e.g. `CLAUDE.md`) are also written to each target dir as `@AGENTS.md` imports.
+- **Idempotency.** `vulyk agents` can be run repeatedly. It only writes files that changed; it does not duplicate `AGENTS.md` sections.
 
 ## :page_facing_up: License
 

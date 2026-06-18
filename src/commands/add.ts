@@ -3,10 +3,7 @@ import * as os from "node:os";
 import * as fs from "node:fs";
 import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
 import { parseSource, fetchSource } from "../lib/fetcher.js";
-import { detect } from "../lib/detector.js";
 import { install } from "../lib/installer.js";
-import { isEnabled } from "../lib/whitelist.js";
-import { type Manifest, type UnifiedEntry } from "../types.js";
 import { log } from "../lib/log.js";
 import {
   pinSpecifier,
@@ -14,163 +11,221 @@ import {
   isRemoteSpecifier,
 } from "../lib/specifier.js";
 import {
-  getPreservedLocalSkillPaths,
-  resolveSkillSourcePath,
-} from "../lib/skills.js";
+  detectGroup,
+  resolveOutputPaths,
+  resolveGitignoreGenerated,
+  isEnabled,
+} from "../lib/groups.js";
+import type { Manifest, Group } from "../types.js";
 
-function getPrimarySkillOutputPath(manifest: Manifest): string {
-  return manifest.skillOutputPaths[0] ?? ".agents/skills";
+const DEFAULT_DIR_GROUP = {
+  outputPaths: [".agents/skills"],
+  validate: { mustContain: ["SKILL.md"] },
+  gitignoreGenerated: true,
+};
+
+const DEFAULT_FILE_GROUP = {
+  outputPaths: ["docs/external"],
+  validate: { fileExtension: ".md" },
+  gitignoreGenerated: true,
+};
+
+interface SourceShape {
+  isFile: boolean;
+  isDir: boolean;
+  exists: boolean;
 }
 
-function addSingle(
-  specifier: string,
-  tmpDir: string,
-  commit: string | null,
+/** Read a source's shape without classifying it as skill/doc/etc. */
+function inspectSource(srcPath: string): SourceShape {
+  if (!fs.existsSync(srcPath)) {
+    return { isFile: false, isDir: false, exists: false };
+  }
+  const stat = fs.statSync(srcPath);
+  return { isFile: stat.isFile(), isDir: stat.isDirectory(), exists: true };
+}
+
+/** Find subdirs of a dir source that match a group's validate.mustContain. */
+function findSubdirsMatching(
+  dirPath: string,
+  group: Group | undefined,
+): string[] {
+  if (!fs.existsSync(dirPath)) return [];
+  return fs
+    .readdirSync(dirPath, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .filter((name) => {
+      if (
+        !group?.validate?.mustContain ||
+        group.validate.mustContain.length === 0
+      ) {
+        // No mustContain constraint → any subdir is a candidate
+        return fs.readdirSync(path.join(dirPath, name)).length > 0;
+      }
+      // All required files must exist in the subdir
+      return group.validate.mustContain.every((req) =>
+        fs.existsSync(path.join(dirPath, name, req)),
+      );
+    });
+}
+
+/** Pick a default group for a source that has no matching group. */
+function defaultGroupFor(
   manifest: Manifest,
-  type: "skill" | "doc",
+  shape: SourceShape,
+  srcPath: string,
 ): string {
-  const installedName = install(
-    specifier,
-    tmpDir,
-    type === "skill" ? manifest.skillOutputPaths : [],
-  );
+  if (shape.isFile) {
+    if (!manifest.groups[DEFAULT_FILE_GROUP.outputPaths[0] ?? "docs"]) {
+      manifest.groups.docs = { ...DEFAULT_FILE_GROUP };
+      log.dim(`  created group "docs" with defaults`);
+    }
+    return "docs";
+  }
+  // Directory: prefer a group that matches; if none, create a skills group
+  if (shape.isDir) {
+    if (!manifest.groups.skills) {
+      manifest.groups.skills = { ...DEFAULT_DIR_GROUP };
+      log.dim(`  created group "skills" with defaults`);
+    }
+    return "skills";
+  }
+  throw new Error(`No matching group for source "${srcPath}".`);
+}
 
-  const baseEntry: UnifiedEntry =
-    type === "skill"
-      ? { type: "skill", source: "" }
-      : {
-          type: "doc",
-          source: "",
-          targets: [getPrimarySkillOutputPath(manifest)],
-        };
+/**
+ * Resolve a group for a source path, either by validate match, by hint, or
+ * by auto-creating a default. Kind-agnostic — uses only the source's structure
+ * and the group's `validate` block.
+ */
+function resolveGroupForSource(
+  manifest: Manifest,
+  srcPath: string,
+  shape: SourceShape,
+  hint: string | undefined,
+): string {
+  const detected = detectGroup(manifest, srcPath, shape.isFile);
+  if (detected) return detected;
+  if (hint && manifest.groups[hint]) return hint;
+  return defaultGroupFor(manifest, shape, srcPath);
+}
 
-  manifest.entries[installedName] = {
-    ...baseEntry,
-    source: commit
-      ? pinSpecifier(specifier, commit)
-      : stripPinnedRef(specifier),
-  };
-
-  if (type === "skill" && !isEnabled(manifest, installedName)) {
-    log.warn(
-      `"${installedName}" added but not in enabled whitelist -- won't install on agents`,
+function installEntry(
+  manifest: Manifest,
+  entryName: string,
+  srcPath: string,
+  packageName: string,
+  sourceIsLocal: boolean,
+): string {
+  const outputPaths = resolveOutputPaths(manifest, entryName);
+  if (outputPaths.length === 0) {
+    throw new Error(
+      `Entry "${entryName}" has no outputPaths (entry, group, or manifest).`,
     );
   }
-
-  log.success(`Added "${installedName}"`);
-  return installedName;
+  // The manifest's gitignoreGenerated field always wins. If unset, the
+  // install function uses a per-path heuristic: gitignore managed copies
+  // but leave a local source path alone when source == destination.
+  const explicitGitignore = resolveGitignoreGenerated(manifest, entryName);
+  const gitignore = explicitGitignore;
+  // For local sources, preserve the source path from being installed-over
+  // and from being added to gitignore (it'd be gitignoring a real project file).
+  const preservePaths = sourceIsLocal ? [srcPath] : undefined;
+  const installName = install(packageName, srcPath, outputPaths, {
+    gitignore,
+    preservePaths,
+  });
+  return installName;
 }
 
-function toRelativePosix(projectRoot: string, value: string): string {
-  return path.relative(projectRoot, value).replace(/\\/g, "/");
-}
-
-function addLocalSingle(
+/**
+ * Add a single source (file or directory) to the manifest.
+ * A directory whose subdirs all match a group's validate gets expanded
+ * into a collection of per-subdir entries.
+ */
+function addOneSource(
+  specifier: string,
   sourcePath: string,
   manifest: Manifest,
   projectRoot: string,
-  type: "skill" | "doc",
-): string {
-  const installedName = install(
-    sourcePath,
-    sourcePath,
-    type === "skill" ? manifest.skillOutputPaths : [],
-    {
-      preservePaths:
-        type === "skill"
-          ? getPreservedLocalSkillPaths(
-              projectRoot,
-              sourcePath,
-              sourcePath,
-              manifest.skillOutputPaths,
-            )
-          : [],
-    },
-  );
-
-  const baseEntry: UnifiedEntry =
-    type === "skill"
-      ? { type: "skill", source: "" }
-      : {
-          type: "doc",
-          source: "",
-          targets: [getPrimarySkillOutputPath(manifest)],
-        };
-
-  manifest.entries[installedName] = {
-    ...baseEntry,
-    source: toRelativePosix(projectRoot, sourcePath),
-  };
-
-  if (type === "skill" && !isEnabled(manifest, installedName)) {
-    log.warn(
-      `"${installedName}" added but not in enabled whitelist -- won't install on agents`,
-    );
+  groupHint: string | undefined,
+  sourceIsLocal: boolean,
+  specifierForEntry: (subPath?: string) => string,
+): void {
+  const shape = inspectSource(sourcePath);
+  if (!shape.exists) {
+    log.error(`Source does not exist: ${specifier}`);
+    process.exit(1);
   }
 
-  log.success(`Added "${installedName}"`);
-  return installedName;
+  // Try to detect a group. For a directory, also probe whether the source is
+  // a collection of sub-entries — if so, the group is determined by what the
+  // sub-entries would match, not by the dir itself.
+  const group = resolveGroupForSource(manifest, sourcePath, shape, groupHint);
+  const resolvedGroup = manifest.groups[group];
+
+  if (shape.isDir) {
+    // If the dir is empty or has no matching subdirs, treat as single entry.
+    const subdirs = findSubdirsMatching(sourcePath, resolvedGroup);
+    if (subdirs.length > 0) {
+      log.info(
+        `Found ${String(subdirs.length)} entries: ${subdirs.join(", ")}`,
+      );
+      for (const sub of subdirs) {
+        const subPath = path.join(sourcePath, sub);
+        const subGroup = resolveGroupForSource(
+          manifest,
+          subPath,
+          { isFile: false, isDir: true, exists: true },
+          groupHint,
+        );
+        const entryName = sub;
+        manifest.entries[entryName] = {
+          source: sourceIsLocal
+            ? path.relative(projectRoot, subPath).replace(/\\/g, "/")
+            : specifierForEntry(sub),
+          group: subGroup,
+        };
+        installEntry(manifest, entryName, subPath, entryName, sourceIsLocal);
+        log.success(`Added "${entryName}" to group "${subGroup}"`);
+      }
+      return;
+    }
+  }
+
+  // Single entry (file or single directory).
+  const entryName = shape.isFile
+    ? path.basename(sourcePath, path.extname(sourcePath))
+    : path.basename(sourcePath);
+  manifest.entries[entryName] = {
+    source: sourceIsLocal
+      ? path.relative(projectRoot, sourcePath).replace(/\\/g, "/")
+      : specifierForEntry(),
+    group,
+  };
+  const installName = installEntry(
+    manifest,
+    entryName,
+    sourcePath,
+    entryName,
+    sourceIsLocal,
+  );
+  log.success(`Added "${installName}" to group "${group}"`);
+  if (!isEnabled(manifest, installName)) {
+    log.dim(`  (use \`vulyk enable ${installName}\` to install on agents)`);
+  }
 }
 
-export async function addCommand(
+async function addRemote(
   specifier: string,
-  opts: { name?: string; type?: "skill" | "doc" },
+  nameHint: string,
+  manifest: Manifest,
+  _projectRoot: string,
+  groupHint: string | undefined,
 ): Promise<void> {
-  const manifestPath = findManifest();
-  if (!manifestPath) {
-    log.error("No vulyk.json found. Run `vulyk init` first.");
-    process.exit(1);
-  }
-
-  const manifest = readManifest(manifestPath);
-  const projectRoot = path.dirname(manifestPath);
-
-  if (!opts.type && manifest.skillOutputPaths.length === 0) {
-    log.warn("No skillOutputPaths configured in vulyk.json.");
-    log.dim(`  Example: "skillOutputPaths": [".agents/skills"]`);
-    process.exit(1);
-  }
-
-  const type = opts.type ?? "skill";
-
-  if (!isRemoteSpecifier(specifier)) {
-    const sourcePath = resolveSkillSourcePath(projectRoot, specifier);
-    if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isDirectory()) {
-      log.error(`Local source must be an existing directory: ${specifier}`);
-      process.exit(1);
-    }
-
-    const detection = detect(sourcePath);
-    if (detection.type === "skill") {
-      addLocalSingle(sourcePath, manifest, projectRoot, type);
-    } else {
-      const skills = detection.skills ?? [];
-      if (skills.length === 0) {
-        log.error("No skills found at this path.");
-        process.exit(1);
-      }
-      log.info(`Found ${String(skills.length)} skills: ${skills.join(", ")}`);
-      for (const skillName of skills) {
-        addLocalSingle(
-          path.join(sourcePath, skillName),
-          manifest,
-          projectRoot,
-          type,
-        );
-      }
-    }
-
-    writeManifest(manifestPath, manifest);
-    return;
-  }
-
-  const name =
-    opts.name ??
-    specifier.split("/").filter(Boolean).pop()?.replace(/@.*$/, "") ??
-    specifier;
-  log.info(`Fetching ${name}...`);
-
-  const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
+  log.info(`Fetching ${nameHint}...`);
+  const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", nameHint);
   if (fs.existsSync(tmpDir)) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -185,30 +240,64 @@ export async function addCommand(
     process.exit(1);
   }
 
-  const detection = detect(tmpDir);
+  const finalSpecifier = commit
+    ? pinSpecifier(specifier, commit)
+    : stripPinnedRef(specifier);
 
-  if (detection.type === "skill") {
-    addSingle(specifier, tmpDir, commit, manifest, type);
-  } else {
-    const skills = detection.skills ?? [];
-    if (skills.length === 0) {
-      log.error("No skills found at this path.");
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      process.exit(1);
-    }
-    log.info(`Found ${String(skills.length)} skills: ${skills.join(", ")}`);
-    for (const skillName of skills) {
-      const skillSpecifier = `${stripPinnedRef(specifier)}/${skillName}`;
-      addSingle(
-        skillSpecifier,
-        path.join(tmpDir, skillName),
-        commit,
-        manifest,
-        type,
-      );
-    }
+  addOneSource(
+    specifier,
+    tmpDir,
+    manifest,
+    _projectRoot,
+    groupHint,
+    false,
+    (sub) =>
+      sub ? `${stripPinnedRef(finalSpecifier)}/${sub}` : finalSpecifier,
+  );
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+}
+
+function addLocal(
+  specifier: string,
+  manifest: Manifest,
+  projectRoot: string,
+  groupHint: string | undefined,
+): void {
+  const sourcePath = path.resolve(projectRoot, specifier);
+  addOneSource(
+    specifier,
+    sourcePath,
+    manifest,
+    projectRoot,
+    groupHint,
+    true,
+    () => path.relative(projectRoot, sourcePath).replace(/\\/g, "/"),
+  );
+}
+
+export async function addCommand(
+  specifier: string,
+  opts: { name?: string; group?: string },
+): Promise<void> {
+  const manifestPath = findManifest();
+  if (!manifestPath) {
+    log.error("No vulyk.json found. Run `vulyk init` first.");
+    process.exit(1);
   }
 
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  const manifest = readManifest(manifestPath);
+  const projectRoot = path.dirname(manifestPath);
+
+  const nameHint =
+    opts.name ??
+    specifier.split("/").filter(Boolean).pop()?.replace(/@.*$/, "") ??
+    specifier;
+
+  if (!isRemoteSpecifier(specifier)) {
+    addLocal(specifier, manifest, projectRoot, opts.group);
+  } else {
+    await addRemote(specifier, nameHint, manifest, projectRoot, opts.group);
+  }
+
   writeManifest(manifestPath, manifest);
 }

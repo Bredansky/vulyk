@@ -1,7 +1,7 @@
 import { parseSource } from "./fetcher.js";
 import { isPinnedGitHubSpecifier, isRemoteSpecifier } from "./specifier.js";
 
-function validateRemoteSourceShape(
+export function validateRemoteSource(
   kindLabel: string,
   name: string,
   source: string,
@@ -26,12 +26,4 @@ function validateRemoteSourceShape(
       `${kindLabel} source for "${name}" is invalid: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-}
-
-export function validateRemoteSkillSource(name: string, source: string): void {
-  validateRemoteSourceShape("Skill", name, source);
-}
-
-export function validateRemoteDocSource(name: string, source: string): void {
-  validateRemoteSourceShape("Doc", name, source);
 }

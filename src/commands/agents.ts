@@ -7,252 +7,170 @@ import {
   install,
   uninstall,
   resolvePath,
-  isManagedByVulyk,
+  addToManifest,
 } from "../lib/installer.js";
-import { isEnabled } from "../lib/whitelist.js";
 import {
-  getRootGitignoreEntries,
-  updateRootGitignore,
-} from "../lib/gitignore.js";
+  getEntry,
+  isEnabled,
+  resolveOutputPaths,
+  resolveAlso,
+  resolveGitignoreGenerated,
+} from "../lib/groups.js";
 import { log } from "../lib/log.js";
 import { pinSpecifier } from "../lib/specifier.js";
-import {
-  isRemoteDocSource,
-  resolveRuleForEntry,
-  validateDocsManifest,
-} from "../lib/docs.js";
-import {
-  getPreservedLocalSkillPaths,
-  isLocalSkillSource,
-  resolveSkillSourcePath,
-  validateSkillsManifest,
-} from "../lib/skills.js";
-import { docsCommand } from "./docs.js";
+import { getDocSourcePath, getDocTitle } from "../lib/docs.js";
+import { cleanupStale } from "../lib/cleanup.js";
+import type { Manifest } from "../types.js";
 
-function collectManagedSkillDirs(rootDir: string): string[] {
-  const managedDirs: string[] = [];
-  const ignoredDirNames = new Set([
-    ".git",
-    "node_modules",
-    ".next",
-    ".turbo",
-    ".yarn",
-    "dist",
-    "build",
-    "coverage",
-  ]);
+function isLocalSource(projectRoot: string, source: string): boolean {
+  return fs.existsSync(path.resolve(projectRoot, source));
+}
 
-  function visit(dir: string): void {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      if (ignoredDirNames.has(entry.name)) continue;
+function getTargetDir(projectRoot: string, target: string): string {
+  const resolved = resolvePath(path.join(projectRoot, target));
+  if (target.includes("*")) {
+    return resolvePath(
+      path.join(projectRoot, (target.split("*")[0] ?? "").replace(/\/$/, "")),
+    );
+  }
+  return fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
+    ? resolved
+    : path.dirname(resolved);
+}
 
-      const entryPath = path.join(dir, entry.name);
-      if (
-        isManagedByVulyk(entryPath) &&
-        fs.existsSync(path.join(entryPath, "SKILL.md"))
-      ) {
-        managedDirs.push(entryPath);
-        continue;
+async function syncEntry(
+  name: string,
+  projectRoot: string,
+  manifest: Manifest,
+): Promise<{ updatedSource?: string }> {
+  const entry = getEntry(manifest, name);
+  if (!entry) return {};
+
+  if (!isEnabled(manifest, name)) {
+    const outPaths = resolveOutputPaths(manifest, name);
+    const isLocal = isLocalSource(projectRoot, entry.source);
+    const sourceIsDir = isLocal
+      ? fs.statSync(path.resolve(projectRoot, entry.source)).isDirectory()
+      : true;
+    uninstall(name, outPaths, { isDir: sourceIsDir });
+    // Also drop the AGENTS.md for this entry's targets
+    if (entry.targets) {
+      for (const target of entry.targets) {
+        const targetDir = getTargetDir(projectRoot, target);
+        if (fs.existsSync(path.join(targetDir, "AGENTS.md"))) {
+          fs.rmSync(path.join(targetDir, "AGENTS.md"), { force: true });
+        }
       }
-
-      visit(entryPath);
     }
+    log.dim(`  skipped ${name} (disabled)`);
+    return {};
   }
 
-  visit(rootDir);
-  return managedDirs;
-}
+  const outPaths = resolveOutputPaths(manifest, name);
+  const explicitGitignore = resolveGitignoreGenerated(manifest, name);
+  // undefined → install function uses per-path heuristic
+  const gitignore = explicitGitignore;
+  const sourceIsLocal = isLocalSource(projectRoot, entry.source);
 
-function cleanupStaleManagedSkillPaths(manifestPath: string): void {
-  const manifest = readManifest(manifestPath);
-  const projectRoot = path.dirname(manifestPath);
-  const expectedSkillEntries = new Set(
-    Object.entries(manifest.entries)
-      .filter(([, entry]) => entry.type === "skill")
-      .flatMap(([name, entry]) => {
-        if (entry.type !== "skill") return [];
-        const preservedPaths = new Set(
-          getPreservedLocalSkillPaths(
-            projectRoot,
-            name,
-            entry.source,
-            manifest.skillOutputPaths,
-          ).map((value) => path.resolve(value)),
-        );
-
-        return manifest.skillOutputPaths
-          .filter((outputPath) => {
-            const candidatePath = path.resolve(projectRoot, outputPath, name);
-            return !preservedPaths.has(candidatePath);
-          })
-          .map((outputPath) => `${outputPath}/${name}/`);
-      }),
-  );
-  const expectedSkillDirs = new Set(
-    [...expectedSkillEntries].map((entry) =>
-      path.resolve(projectRoot, entry.replace(/[\\/]+$/, "")),
-    ),
-  );
-
-  const managedEntries = getRootGitignoreEntries();
-  const removableEntrySet = new Set<string>();
-  const managedSkillDirs = collectManagedSkillDirs(projectRoot).filter(
-    (skillDir) => !expectedSkillDirs.has(path.resolve(skillDir)),
-  );
-
-  for (const skillDir of managedSkillDirs) {
-    fs.rmSync(skillDir, { recursive: true, force: true });
-    const relativeEntry = `${path.relative(projectRoot, skillDir).replace(/\\/g, "/")}/`;
-    removableEntrySet.add(relativeEntry);
-    log.dim(`  removed ${relativeEntry} (stale managed path)`);
-  }
-
-  const staleSkillEntries = managedEntries.filter((entry) => {
-    if (!entry.endsWith("/")) return false;
-    if (entry.startsWith("**/")) return false;
-    return !expectedSkillEntries.has(entry);
-  });
-  const missingEntries: string[] = [];
-  for (const entry of staleSkillEntries) {
-    if (!fs.existsSync(path.join(projectRoot, entry.replace(/[\\/]+$/, "")))) {
-      missingEntries.push(entry);
-      continue;
-    }
-    if (removableEntrySet.has(entry)) continue;
-  }
-
-  if (removableEntrySet.size === 0 && missingEntries.length === 0) return;
-
-  updateRootGitignore(
-    managedEntries
-      .filter(
-        (entry) =>
-          !missingEntries.includes(entry) && !removableEntrySet.has(entry),
-      )
-      .sort(),
-  );
-}
-
-async function syncExternalDocs(manifestPath: string): Promise<void> {
-  const manifest = readManifest(manifestPath);
-  const docEntries = Object.entries(manifest.entries).filter(
-    ([, entry]) =>
-      entry.type === "doc" &&
-      isRemoteDocSource(path.dirname(manifestPath), entry.source),
-  );
-  if (docEntries.length === 0) return;
-
-  const projectRoot = path.dirname(manifestPath);
-  validateDocsManifest(manifest, projectRoot);
-  let changed = false;
-
-  for (const [name, entry] of docEntries) {
-    if (entry.type !== "doc") continue;
-    log.info(`  syncing doc ${name}...`);
-
-    const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", `doc-${name}`);
+  if (sourceIsLocal) {
+    const sourcePath = path.resolve(projectRoot, entry.source);
+    install(name, sourcePath, outPaths, {
+      gitignore,
+      preservePaths: [sourcePath],
+    });
+  } else {
+    const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
     if (fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-
     try {
       const commit = await fetchSource(parseSource(entry.source), tmpDir);
-      const mdFile = fs
-        .readdirSync(tmpDir)
-        .find((file) => file.endsWith(".md"));
-      if (!mdFile) throw new Error("No markdown file found in fetched content");
-
-      const rawBody = fs.readFileSync(path.join(tmpDir, mdFile), "utf8");
-      const normalizedSource = commit
+      install(name, tmpDir, outPaths, { gitignore });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      const updatedSource = commit
         ? pinSpecifier(entry.source, commit)
         : entry.source;
-      const rule = resolveRuleForEntry(manifest, projectRoot, entry);
-
-      for (const outputPath of rule.config.outputPaths) {
-        const destDir = resolvePath(path.join(projectRoot, outputPath));
-        fs.mkdirSync(destDir, { recursive: true });
-        fs.writeFileSync(path.join(destDir, `${name}.md`), rawBody);
-      }
-
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      manifest.entries[name] = {
-        ...entry,
-        source: normalizedSource,
-      };
-      changed = true;
       log.success(name);
+      // Continue to AGENTS.md generation
+      generateAgentsForEntry(name, entry, projectRoot, manifest);
+      return {
+        updatedSource:
+          updatedSource === entry.source ? undefined : updatedSource,
+      };
     } catch (err) {
       log.error(
-        `Failed to sync doc "${name}": ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to sync "${name}": ${err instanceof Error ? err.message : String(err)}`,
       );
+      return {};
     }
   }
 
-  if (changed) writeManifest(manifestPath, manifest);
+  log.success(name);
+  generateAgentsForEntry(name, entry, projectRoot, manifest);
+  return {};
 }
 
-function cleanupStaleExternalDocFiles(manifestPath: string): void {
-  const manifest = readManifest(manifestPath);
-  const projectRoot = path.dirname(manifestPath);
-  const managedGitignoreEntries = new Set(getRootGitignoreEntries());
-  const outputPathToExpectedFiles = new Map<string, Set<string>>();
-  const protectedLocalDocFiles = new Set<string>();
+/**
+ * Generate or update the AGENTS.md for a single entry's targets.
+ * Adds the AGENTS.md to the target dir's `.vulyk` manifest so cleanup
+ * leaves any user-added files in that dir alone.
+ */
+function generateAgentsForEntry(
+  name: string,
+  entry: Manifest["entries"][string],
+  projectRoot: string,
+  manifest: Manifest,
+): void {
+  if (!entry.targets || entry.targets.length === 0) return;
+  const docFilePath = getDocSourcePath(manifest, projectRoot, name);
+  if (!docFilePath || !fs.existsSync(docFilePath)) return;
 
-  for (const [name, entry] of Object.entries(manifest.entries)) {
-    if (entry.type !== "doc") continue;
-    if (!isRemoteDocSource(projectRoot, entry.source)) {
-      protectedLocalDocFiles.add(path.resolve(projectRoot, entry.source));
-      continue;
+  const docFile = getDocTitle(docFilePath, projectRoot);
+  const title = docFile.title || name;
+  const description = entry.description ?? "";
+  const relativePath = docFile.relativePath;
+  const aliases = resolveAlso(manifest, name);
+
+  const sectionLines: string[] = [];
+  if (title) sectionLines.push(`# ${title}`);
+  if (description) sectionLines.push(`\n${description}`);
+  sectionLines.push(`\nFull documentation: ${relativePath}`);
+  const section = sectionLines.join("");
+
+  for (const target of entry.targets) {
+    const targetDir = getTargetDir(projectRoot, target);
+    fs.mkdirSync(targetDir, { recursive: true });
+    const agentsPath = path.join(targetDir, "AGENTS.md");
+
+    // Read existing AGENTS.md to append our section instead of overwriting
+    let existing = "";
+    if (fs.existsSync(agentsPath)) {
+      existing = fs.readFileSync(agentsPath, "utf8");
     }
 
-    const rule = resolveRuleForEntry(manifest, projectRoot, entry);
+    // Idempotency: if the section is already present, skip
+    const sectionHeader = `# ${title}`;
+    if (existing.includes(sectionHeader)) continue;
 
-    for (const outputPath of rule.config.outputPaths) {
-      const resolvedOutputPath = resolvePath(
-        path.join(projectRoot, outputPath),
-      );
-      if (!outputPathToExpectedFiles.has(resolvedOutputPath)) {
-        outputPathToExpectedFiles.set(resolvedOutputPath, new Set());
-      }
-      outputPathToExpectedFiles.get(resolvedOutputPath)?.add(`${name}.md`);
-    }
-  }
+    const updated = existing
+      ? `${existing.replace(/\s*$/, "")}\n\n---\n\n${section}\n`
+      : `${section}\n`;
+    fs.writeFileSync(agentsPath, updated);
+    addToManifest(targetDir, ["AGENTS.md"]);
 
-  const candidateOutputPaths =
-    outputPathToExpectedFiles.size > 0
-      ? [...outputPathToExpectedFiles.keys()]
-      : [...managedGitignoreEntries]
-          .filter(
-            (entry) =>
-              !entry.endsWith("/") &&
-              !entry.endsWith(".md") &&
-              entry !== "AGENTS.md" &&
-              entry !== "**/.vulyk" &&
-              !entry.includes("CLAUDE.md"),
-          )
-          .map((entry) => resolvePath(path.join(projectRoot, entry)));
-
-  for (const outputPath of candidateOutputPaths) {
-    if (!fs.existsSync(outputPath) || !fs.statSync(outputPath).isDirectory()) {
-      continue;
-    }
-
-    const expectedFiles =
-      outputPathToExpectedFiles.get(outputPath) ?? new Set();
-    for (const entry of fs.readdirSync(outputPath, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
-      if (expectedFiles.has(entry.name)) continue;
-
-      const absolutePath = path.join(outputPath, entry.name);
-      if (protectedLocalDocFiles.has(absolutePath)) continue;
-
-      fs.rmSync(absolutePath, { force: true });
-      log.dim(`  removed ${path.relative(projectRoot, absolutePath)}`);
+    // Aliases
+    for (const alias of aliases) {
+      const aliasPath = path.join(targetDir, alias);
+      fs.writeFileSync(aliasPath, `@AGENTS.md\n`);
+      addToManifest(targetDir, [alias]);
     }
   }
 }
 
+/**
+ * Sync every enabled entry: install from source, generate AGENTS.md if
+ * the entry declares targets, refresh gitignore, prune stale managed files.
+ */
 export async function agentsCommand(): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
@@ -262,111 +180,22 @@ export async function agentsCommand(): Promise<void> {
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
-  validateSkillsManifest(manifest, projectRoot);
-  validateDocsManifest(manifest, projectRoot);
+
+  cleanupStale(manifest, projectRoot);
+
+  log.blue("\nSyncing entries:");
   let changed = false;
-  cleanupStaleManagedSkillPaths(manifestPath);
-  const skills = Object.entries(manifest.entries).filter(
-    ([, entry]) => entry.type === "skill",
-  );
-  const installedNames = new Set(
-    Object.entries(manifest.entries)
-      .filter(([, entry]) => entry.type === "skill")
-      .map(([name]) => name),
-  );
 
-  for (const outputPath of manifest.skillOutputPaths) {
-    const resolved = resolvePath(outputPath);
-    if (!fs.existsSync(resolved)) continue;
-    for (const entry of fs.readdirSync(resolved, { withFileTypes: true })) {
-      if (
-        entry.isDirectory() &&
-        !installedNames.has(entry.name) &&
-        isManagedByVulyk(path.join(resolved, entry.name))
-      ) {
-        fs.rmSync(path.join(resolved, entry.name), {
-          recursive: true,
-          force: true,
-        });
-        log.dim(`  removed ${entry.name} (not in vulyk.json)`);
-      }
-    }
-  }
-
-  for (const [name, entry] of skills) {
-    if (entry.type !== "skill") continue;
-    if (!isEnabled(manifest, name)) {
-      uninstall(name, manifest.skillOutputPaths, {
-        preservePaths: getPreservedLocalSkillPaths(
-          projectRoot,
-          name,
-          entry.source,
-          manifest.skillOutputPaths,
-        ),
-      });
-      log.dim(`  skipped ${name} (not in whitelist)`);
-      continue;
-    }
-
-    log.info(`  syncing ${name}...`);
-    if (isLocalSkillSource(projectRoot, entry.source)) {
-      try {
-        const sourcePath = resolveSkillSourcePath(projectRoot, entry.source);
-        install(name, sourcePath, manifest.skillOutputPaths, {
-          preservePaths: getPreservedLocalSkillPaths(
-            projectRoot,
-            name,
-            entry.source,
-            manifest.skillOutputPaths,
-          ),
-        });
-        log.success(name);
-      } catch (err) {
-        log.error(
-          `Failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      continue;
-    }
-
-    const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
-    if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-
-    try {
-      const commit = await fetchSource(parseSource(entry.source), tmpDir);
-      install(name, tmpDir, manifest.skillOutputPaths);
-      const normalizedSource = commit
-        ? pinSpecifier(entry.source, commit)
-        : entry.source;
-      const existingEntry = manifest.entries[name];
-      if (
-        existingEntry?.type === "skill" &&
-        existingEntry.source !== normalizedSource
-      ) {
-        manifest.entries[name] = { type: "skill", source: normalizedSource };
-        changed = true;
-      }
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      log.success(name);
-    } catch (err) {
-      log.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+  for (const name of Object.keys(manifest.entries)) {
+    const entry = getEntry(manifest, name);
+    if (!entry) continue;
+    const { updatedSource } = await syncEntry(name, projectRoot, manifest);
+    if (updatedSource && updatedSource !== entry.source) {
+      manifest.entries[name] = { ...entry, source: updatedSource };
+      changed = true;
     }
   }
 
   if (changed) writeManifest(manifestPath, manifest);
-
-  cleanupStaleExternalDocFiles(manifestPath);
-
-  const docEntries = Object.entries(manifest.entries).filter(
-    ([, entry]) => entry.type === "doc",
-  );
-  if (docEntries.length > 0) {
-    log.info("\n  syncing external docs...");
-    await syncExternalDocs(manifestPath);
-  }
-
-  docsCommand({});
-  log.success("Sync complete");
+  log.success("\nSync complete");
 }
