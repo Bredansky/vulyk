@@ -18,7 +18,7 @@ const program = new Command();
 program
   .name("vulyk")
   .description("Package manager for AI agent skills and tracked docs")
-  .version("0.9.3");
+  .version("0.9.4");
 
 program
   .command("init")

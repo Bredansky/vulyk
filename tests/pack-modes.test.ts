@@ -134,10 +134,10 @@ void test("agentsCommand: per-alias explicit mode 'import' on the primary emits 
 
   const agentsPath = path.join(projectRoot, "src", "AGENTS.md");
   const body = fs.readFileSync(agentsPath, "utf8");
-  // Primary alias with import mode: a section whose body is @<relativePath>.
-  // The section is appended (not overwritten) so it can sit alongside other
-  // entries' summary sections in the same shared AGENTS.md.
-  assert.match(body, /^@import .+\/alpha\.md$/m);
+  // Primary alias with import mode: a bare `@<relativePath>` line at the
+  // top of the shared AGENTS.md. No framing (# title, description) — per
+  // Claude Code's @-import convention, direct imports are line-shaped.
+  assert.match(body, /^@src-docs\/alpha\.md$/m);
 });
 
 void test("agentsCommand: CLI --aliases flag overrides entry.aliases", async () => {
@@ -203,4 +203,64 @@ void test("agentsCommand: group.aliases is used as fallback when entry has no al
   const claudePath = path.join(projectRoot, "src", "CLAUDE.md");
   assert.equal(fs.existsSync(claudePath), true);
   assert.equal(fs.readFileSync(claudePath, "utf8"), "@AGENTS.md\n");
+});
+
+void test("agentsCommand: shared AGENTS.md composes imports at top, summaries after ---", async () => {
+  // Regression: agent-conventions with import mode must render as a bare
+  // `@<path>` line at the top of AGENTS.md, not as a framed section in
+  // the middle. Per Claude Code's @-import convention, direct imports
+  // are line-shaped. Summary-mode entries follow after `---`.
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-pack-"));
+  createdDirs.push(projectRoot);
+  fs.mkdirSync(path.join(projectRoot, "src-docs"), { recursive: true });
+  fs.mkdirSync(path.join(projectRoot, "src"), { recursive: true });
+  writeFile(
+    path.join(projectRoot, "src-docs", "agent-conventions.md"),
+    "# Agent Conventions\n\nCross-project rules.\n",
+  );
+  writeFile(
+    path.join(projectRoot, "src-docs", "project-structure.md"),
+    "# Project Structure\n\nHow we organize code.\n",
+  );
+
+  const manifest: Manifest = {
+    entries: {
+      "agent-conventions": {
+        source: "./src-docs/agent-conventions.md",
+        outputPaths: ["./docs/installed"],
+        targets: ["src"],
+        aliases: [{ path: "AGENTS.md", mode: "import" }],
+      },
+      "project-structure": {
+        source: "./src-docs/project-structure.md",
+        outputPaths: ["./docs/installed"],
+        targets: ["src"],
+        // No aliases — defaults to AGENTS.md with summary mode.
+      },
+    },
+  };
+  writeJson(path.join(projectRoot, "vulyk.json"), manifest);
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    await agentsCommand();
+  } finally {
+    process.chdir(initialCwd);
+  }
+
+  const body = fs.readFileSync(
+    path.join(projectRoot, "src", "AGENTS.md"),
+    "utf8",
+  );
+  // The bare @-import line must be the first line — no `# Agent
+  // Conventions` heading, no description, no framing. The path is
+  // relative to the project root, not the installed doc location, so
+  // Claude Code can resolve it from the alias file.
+  const firstLine = body.split("\n")[0];
+  assert.equal(firstLine, "@src-docs/agent-conventions.md");
+  // Summary section appears after the `---` separator.
+  assert.match(body, /\n---\n\n# Project Structure\n/);
+  // No framed "Agent Conventions" section in the body.
+  assert.doesNotMatch(body, /^# Agent Conventions/m);
 });

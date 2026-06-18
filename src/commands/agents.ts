@@ -39,14 +39,20 @@ function getTargetDir(projectRoot: string, target: string): string {
     : path.dirname(resolved);
 }
 
+interface SyncResult {
+  updatedSource?: string;
+  contributions: PrimaryContribution[];
+  secondaryWrites: { aliasPath: string; body: string }[];
+}
+
 async function syncEntry(
   name: string,
   projectRoot: string,
   manifest: Manifest,
   cliOverrides: { pack?: PackMode; aliases?: string[] } = {},
-): Promise<{ updatedSource?: string }> {
+): Promise<SyncResult> {
   const entry = getEntry(manifest, name);
-  if (!entry) return {};
+  if (!entry) return { contributions: [], secondaryWrites: [] };
 
   if (!isEnabled(manifest, name)) {
     const outPaths = resolveOutputPaths(manifest, name);
@@ -55,17 +61,12 @@ async function syncEntry(
       ? fs.statSync(path.resolve(projectRoot, entry.source)).isDirectory()
       : true;
     uninstall(name, outPaths, { isDir: sourceIsDir });
-    // Also drop the AGENTS.md for this entry's targets
-    if (entry.targets) {
-      for (const target of entry.targets) {
-        const targetDir = getTargetDir(projectRoot, target);
-        if (fs.existsSync(path.join(targetDir, "AGENTS.md"))) {
-          fs.rmSync(path.join(targetDir, "AGENTS.md"), { force: true });
-        }
-      }
-    }
+    // The entry's contribution to the shared alias file will be
+    // dropped on the next compose pass — see writeComposedAliasFiles.
+    // We don't touch the file here so we don't wipe other entries'
+    // contributions.
     log.dim(`  skipped ${name} (disabled)`);
-    return {};
+    return { contributions: [], secondaryWrites: [] };
   }
 
   const outPaths = resolveOutputPaths(manifest, name);
@@ -73,6 +74,8 @@ async function syncEntry(
   // undefined → install function uses per-path heuristic
   const gitignore = explicitGitignore;
   const sourceIsLocal = isLocalSource(projectRoot, entry.source);
+
+  let updatedSource: string | undefined;
 
   if (sourceIsLocal) {
     const sourcePath = path.resolve(projectRoot, entry.source);
@@ -89,27 +92,70 @@ async function syncEntry(
       const commit = await fetchSource(parseSource(entry.source), tmpDir);
       install(name, tmpDir, outPaths, { gitignore });
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      const updatedSource = commit
+      updatedSource = commit
         ? pinSpecifier(entry.source, commit)
         : entry.source;
-      log.success(name);
-      // Continue to AGENTS.md generation
-      generateAgentsForEntry(name, entry, projectRoot, manifest, cliOverrides);
-      return {
-        updatedSource:
-          updatedSource === entry.source ? undefined : updatedSource,
-      };
+      if (updatedSource !== entry.source) {
+        manifest.entries[name] = { ...entry, source: updatedSource };
+      }
     } catch (err) {
       log.error(
         `Failed to sync "${name}": ${err instanceof Error ? err.message : String(err)}`,
       );
-      return {};
+      return { contributions: [], secondaryWrites: [] };
     }
   }
 
   log.success(name);
-  generateAgentsForEntry(name, entry, projectRoot, manifest, cliOverrides);
-  return {};
+
+  // Compute this entry's primary + secondary alias contributions.
+  // The shared alias file is composed once at the end of the run.
+  const contributions = computePrimaryContribution(
+    name,
+    entry,
+    projectRoot,
+    manifest,
+    cliOverrides,
+  );
+
+  const secondaryWrites: { aliasPath: string; body: string }[] = [];
+  const docFilePath = getDocSourcePath(manifest, projectRoot, name);
+  if (docFilePath && fs.existsSync(docFilePath) && entry.targets) {
+    const docFile = getDocTitle(docFilePath, projectRoot);
+    const title = docFile.title || name;
+    const description = entry.description ?? "";
+    const docRelativePath = docFile.relativePath;
+    const rawAliases = cliOverrides.aliases ?? resolveAlso(manifest, name);
+    if (rawAliases.length > 0) {
+      const defaultPack: PackMode =
+        cliOverrides.pack ?? resolvePack(manifest, name) ?? "summary";
+      const aliases = rawAliases.map((spec, i) =>
+        normalizeAlias(spec, i === 0, defaultPack),
+      );
+      const primary = aliases[0];
+      if (primary) {
+        for (const target of entry.targets) {
+          const targetDir = getTargetDir(projectRoot, target);
+          for (let i = 1; i < aliases.length; i++) {
+            const alias = aliases[i];
+            if (!alias) continue;
+            const aliasPath = path.join(targetDir, alias.path);
+            const body = renderAliasBody(
+              alias.mode,
+              false,
+              primary.path,
+              docRelativePath,
+              title,
+              description,
+            );
+            secondaryWrites.push({ aliasPath, body });
+          }
+        }
+      }
+    }
+  }
+
+  return { updatedSource, contributions, secondaryWrites };
 }
 
 /**
@@ -147,21 +193,12 @@ function renderAliasBody(
   description: string,
 ): string {
   if (mode === "import") {
-    // Non-primary aliases: import the primary's full content (Claude
-    // Code inlines it).
-    if (!isPrimary) {
-      return `@${primaryRelativePath}\n`;
-    }
-    // Primary alias with explicit `import` mode: render a section whose
-    // body is the @import. Claude Code (and humans following the chain)
-    // can read the full doc by following the import. This keeps the
-    // entry's section in the same place as summary-mode entries.
-    const lines: string[] = [`# ${title}`];
-    if (description) {
-      lines.push("", description);
-    }
-    lines.push("", `@import ${docRelativePath}`);
-    return `${lines.join("\n")}\n`;
+    // Per Claude Code's @-import convention, direct imports must be bare
+    // lines (no header, no description) so they sit at the top of the
+    // shared AGENTS.md without a section frame. Non-primary aliases
+    // chain through the primary; primary aliases import the doc itself.
+    const target = isPrimary ? docRelativePath : primaryRelativePath;
+    return `@${target}\n`;
   }
   if (!isPrimary) {
     throw new Error("`summary` mode is not valid for non-primary aliases");
@@ -187,87 +224,118 @@ function normalizeAlias(
 }
 
 /**
- * Generate or update the AGENTS.md for a single entry's targets.
- * Adds the generated alias files to the target dir's `.vulyk` manifest so
- * cleanup leaves any user-added files in that dir alone.
+ * One entry's contribution to a primary alias file (e.g. AGENTS.md).
+ * Multiple contributions to the same file are composed in two blocks:
+ * import-mode lines first (bare `@<path>`), then summary-mode sections,
+ * separated by `---`.
  */
-function generateAgentsForEntry(
+interface PrimaryContribution {
+  targetDir: string;
+  primaryPath: string;
+  primaryRelativePath: string;
+  mode: PackMode;
+  body: string;
+}
+
+/**
+ * Compute one entry's contribution to its primary alias file. Returns
+ * null when the entry has nothing to contribute (no targets, no source,
+ * or empty aliases).
+ */
+function computePrimaryContribution(
   name: string,
   entry: Manifest["entries"][string],
   projectRoot: string,
   manifest: Manifest,
   cliOverrides: { pack?: PackMode; aliases?: string[] } = {},
-): void {
-  if (!entry.targets || entry.targets.length === 0) return;
+): PrimaryContribution[] {
+  if (!entry.targets || entry.targets.length === 0) return [];
   const docFilePath = getDocSourcePath(manifest, projectRoot, name);
-  if (!docFilePath || !fs.existsSync(docFilePath)) return;
+  if (!docFilePath || !fs.existsSync(docFilePath)) return [];
 
   const docFile = getDocTitle(docFilePath, projectRoot);
   const title = docFile.title || name;
   const description = entry.description ?? "";
   const docRelativePath = docFile.relativePath;
 
-  // Resolve aliases: CLI flag > entry.aliases > group.aliases > manifest.aliases
   const rawAliases = cliOverrides.aliases ?? resolveAlso(manifest, name);
-  if (rawAliases.length === 0) return;
+  if (rawAliases.length === 0) return [];
 
-  // Resolve pack: CLI flag > entry.pack > group.pack > manifest.pack > "summary"
   const defaultPack: PackMode =
     cliOverrides.pack ?? resolvePack(manifest, name) ?? "summary";
   const aliases = rawAliases.map((spec, i) =>
     normalizeAlias(spec, i === 0, defaultPack),
   );
-
   const primary = aliases[0];
-  if (!primary) return;
+  if (!primary) return [];
 
-  for (const target of entry.targets) {
+  const body = renderAliasBody(
+    primary.mode,
+    true,
+    primary.path,
+    docRelativePath,
+    title,
+    description,
+  );
+
+  return entry.targets.map((target) => {
     const targetDir = getTargetDir(projectRoot, target);
+    return {
+      targetDir,
+      primaryPath: path.join(targetDir, primary.path),
+      primaryRelativePath: primary.path,
+      mode: primary.mode,
+      body,
+    };
+  });
+}
+
+/**
+ * Group contributions by (targetDir, primaryPath) and write each shared
+ * alias file: import-mode lines at the top, then summary-mode sections
+ * separated by `---`. The write is idempotent on exact file content.
+ */
+function writeComposedAliasFiles(
+  contributions: PrimaryContribution[],
+  secondaryWrites: { aliasPath: string; body: string }[],
+): void {
+  // Group primary contributions by their target file path.
+  const buckets = new Map<string, PrimaryContribution[]>();
+  for (const c of contributions) {
+    const list = buckets.get(c.primaryPath) ?? [];
+    list.push(c);
+    buckets.set(c.primaryPath, list);
+  }
+
+  for (const [primaryPath, bucket] of buckets) {
+    const targetDir = bucket[0]?.targetDir ?? path.dirname(primaryPath);
     fs.mkdirSync(targetDir, { recursive: true });
+    const imports = bucket
+      .filter((c) => c.mode === "import")
+      .map((c) => c.body.trim());
+    const summaries = bucket
+      .filter((c) => c.mode === "summary")
+      .map((c) => c.body.trim());
 
-    // 1. Write the primary alias (or append to it if it already has user content).
-    const primaryPath = path.join(targetDir, primary.path);
-    const primaryContent = renderAliasBody(
-      primary.mode,
-      true,
-      primary.path,
-      docRelativePath,
-      title,
-      description,
-    );
+    const blocks: string[] = [];
+    if (imports.length > 0) blocks.push(imports.join("\n"));
+    if (summaries.length > 0) blocks.push(summaries.join("\n\n---\n\n"));
+    const desired = blocks.length > 0 ? `${blocks.join("\n\n---\n\n")}\n` : "";
 
-    // Both valid primary modes (`summary`, `import`) produce a section
-    // that can be appended to the shared alias file. Append with an
-    // idempotency check keyed on the section title.
     let existing = "";
     if (fs.existsSync(primaryPath)) {
       existing = fs.readFileSync(primaryPath, "utf8");
     }
-    const sectionHeader = `# ${title}`;
-    if (!existing.includes(sectionHeader)) {
-      const updated = existing
-        ? `${existing.replace(/\s*$/, "")}\n\n---\n\n${primaryContent}`
-        : primaryContent;
-      fs.writeFileSync(primaryPath, updated);
+    if (existing !== desired) {
+      fs.writeFileSync(primaryPath, desired);
     }
-    addToManifest(targetDir, [primary.path]);
+    addToManifest(targetDir, [path.basename(primaryPath)]);
+  }
 
-    // 2. Write the secondary aliases. Their content depends on the primary.
-    for (let i = 1; i < aliases.length; i++) {
-      const alias = aliases[i];
-      if (!alias) continue;
-      const aliasPath = path.join(targetDir, alias.path);
-      const body = renderAliasBody(
-        alias.mode,
-        false,
-        primary.path,
-        docRelativePath,
-        title,
-        description,
-      );
-      fs.writeFileSync(aliasPath, body);
-      addToManifest(targetDir, [alias.path]);
-    }
+  for (const { aliasPath, body } of secondaryWrites) {
+    fs.mkdirSync(path.dirname(aliasPath), { recursive: true });
+    fs.writeFileSync(aliasPath, body);
+    addToManifest(path.dirname(aliasPath), [path.basename(aliasPath)]);
   }
 }
 
@@ -291,11 +359,13 @@ export async function agentsCommand(
 
   log.blue("\nSyncing entries:");
   let changed = false;
+  const allContributions: PrimaryContribution[] = [];
+  const allSecondaryWrites: { aliasPath: string; body: string }[] = [];
 
   for (const name of Object.keys(manifest.entries)) {
     const entry = getEntry(manifest, name);
     if (!entry) continue;
-    const { updatedSource } = await syncEntry(
+    const { updatedSource, contributions, secondaryWrites } = await syncEntry(
       name,
       projectRoot,
       manifest,
@@ -305,7 +375,11 @@ export async function agentsCommand(
       manifest.entries[name] = { ...entry, source: updatedSource };
       changed = true;
     }
+    allContributions.push(...contributions);
+    allSecondaryWrites.push(...secondaryWrites);
   }
+
+  writeComposedAliasFiles(allContributions, allSecondaryWrites);
 
   if (changed) writeManifest(manifestPath, manifest);
   log.success("\nSync complete");
