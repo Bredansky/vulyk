@@ -147,12 +147,25 @@ function renderAliasBody(
   description: string,
 ): string {
   if (mode === "import") {
-    // Primary with import: import the doc directly. Non-primary: chain via
-    // the primary alias so Claude Code expands once.
-    const target = isPrimary ? docRelativePath : primaryRelativePath;
-    return `@${target}\n`;
+    // Non-primary aliases: import the primary's full content (Claude
+    // Code inlines it).
+    if (!isPrimary) {
+      return `@${primaryRelativePath}\n`;
+    }
+    // Primary alias with explicit `import` mode: render a section whose
+    // body is the @import. Claude Code (and humans following the chain)
+    // can read the full doc by following the import. This keeps the
+    // entry's section in the same place as summary-mode entries.
+    const lines: string[] = [`# ${title}`];
+    if (description) {
+      lines.push("", description);
+    }
+    lines.push("", `@import ${docRelativePath}`);
+    return `${lines.join("\n")}\n`;
   }
-  // mode === "summary" — full section (only valid for the primary alias).
+  if (!isPrimary) {
+    throw new Error("`summary` mode is not valid for non-primary aliases");
+  }
   return `${renderSummaryBody(title, description, docRelativePath)}\n`;
 }
 
@@ -223,24 +236,19 @@ function generateAgentsForEntry(
       description,
     );
 
-    if (primary.mode === "summary") {
-      // Append our section to any existing content (idempotent).
-      let existing = "";
-      if (fs.existsSync(primaryPath)) {
-        existing = fs.readFileSync(primaryPath, "utf8");
-      }
-      const sectionHeader = `# ${title}`;
-      if (existing.includes(sectionHeader)) {
-        // Section already present; skip to keep idempotent.
-      } else {
-        const updated = existing
-          ? `${existing.replace(/\s*$/, "")}\n\n---\n\n${primaryContent}`
-          : primaryContent;
-        fs.writeFileSync(primaryPath, updated);
-      }
-    } else {
-      // reference/copy on primary: just write (we don't append to a non-summary primary)
-      fs.writeFileSync(primaryPath, primaryContent);
+    // Both valid primary modes (`summary`, `import`) produce a section
+    // that can be appended to the shared alias file. Append with an
+    // idempotency check keyed on the section title.
+    let existing = "";
+    if (fs.existsSync(primaryPath)) {
+      existing = fs.readFileSync(primaryPath, "utf8");
+    }
+    const sectionHeader = `# ${title}`;
+    if (!existing.includes(sectionHeader)) {
+      const updated = existing
+        ? `${existing.replace(/\s*$/, "")}\n\n---\n\n${primaryContent}`
+        : primaryContent;
+      fs.writeFileSync(primaryPath, updated);
     }
     addToManifest(targetDir, [primary.path]);
 

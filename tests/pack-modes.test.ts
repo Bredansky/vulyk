@@ -134,8 +134,10 @@ void test("agentsCommand: per-alias explicit mode 'import' on the primary emits 
 
   const agentsPath = path.join(projectRoot, "src", "AGENTS.md");
   const body = fs.readFileSync(agentsPath, "utf8");
-  // Primary alias with import mode: a single @<relativePath> line
-  assert.match(body, /^@.+\/alpha\.md$/m);
+  // Primary alias with import mode: a section whose body is @<relativePath>.
+  // The section is appended (not overwritten) so it can sit alongside other
+  // entries' summary sections in the same shared AGENTS.md.
+  assert.match(body, /^@import .+\/alpha\.md$/m);
 });
 
 void test("agentsCommand: CLI --aliases flag overrides entry.aliases", async () => {

@@ -170,11 +170,24 @@ export function getDocSourcePath(
     return path.resolve(projectRoot, entry.source);
   }
   const outputPaths = resolveOutputPaths(manifest, name);
-  return outputPaths
-    .map((outputPath) =>
-      path.join(path.resolve(projectRoot, outputPath), `${name}.md`),
-    )
-    .find((candidatePath) => fs.existsSync(candidatePath));
+  for (const outputPath of outputPaths) {
+    const base = path.resolve(projectRoot, outputPath);
+    // File install: <base>/<name>.md
+    const filePath = path.join(base, `${name}.md`);
+    if (fs.existsSync(filePath)) return filePath;
+    // Dir install (remote skills/dirs): <base>/<name>/<name>.md, or any
+    // *.md inside <base>/<name>/
+    const dirPath = path.join(base, name);
+    const inDirNamed = path.join(dirPath, `${name}.md`);
+    if (fs.existsSync(inDirNamed)) return inDirNamed;
+    if (fs.existsSync(dirPath)) {
+      const nested = fs
+        .readdirSync(dirPath, { withFileTypes: true })
+        .find((d) => d.isFile() && d.name.endsWith(".md"));
+      if (nested) return path.join(dirPath, nested.name);
+    }
+  }
+  return undefined;
 }
 
 export function findDocsForFile(filePath: string): {
