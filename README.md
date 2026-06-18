@@ -77,20 +77,20 @@ Updates remote git-backed entries to the latest commit reachable from their conf
 
 The `npm install` for this manifest. For every enabled entry: install from source, generate `AGENTS.md` (if `targets` is set), refresh gitignore. Prunes any file in a `.vulyk` manifest that's no longer claimed by an active entry.
 
-### `vulyk docs-for <file>`
+### `vulyk find-docs <file>`
 
 Prints JSON for tracked docs that apply to a specific file. Useful when a skill or review workflow wants to answer "which docs should I compare this file against?"
 
 ```sh
-vulyk docs-for src/features/editor/poster.tsx
+vulyk find-docs src/features/editor/poster.tsx
 ```
 
-### `vulyk targets-for <doc>`
+### `vulyk find-targets <doc>`
 
 Prints JSON for tracked targets declared by a specific doc. Useful when a doc changes and you want to know which files or folders may need review.
 
 ```sh
-vulyk targets-for docs/external/project-structure.md
+vulyk find-targets docs/external/project-structure.md
 ```
 
 ## :receipt: `vulyk.json`

@@ -8,8 +8,8 @@ import { listCommand } from "./commands/list.js";
 import { agentsCommand } from "./commands/agents.js";
 import { updateCommand } from "./commands/update.js";
 import { diffCommand } from "./commands/diff.js";
-import { docsForCommand } from "./commands/docs-for.js";
-import { targetsForCommand } from "./commands/targets-for.js";
+import { findDocsCommand } from "./commands/find-docs.js";
+import { findTargetsCommand } from "./commands/find-targets.js";
 
 const program = new Command();
 
@@ -72,18 +72,14 @@ program
   });
 
 program
-  .command("docs-for <file>")
+  .command("find-docs <file>")
   .description("List tracked docs that apply to a specific file")
-  .action((file: string) => {
-    docsForCommand(file);
-  });
+  .action(findDocsCommand);
 
 program
-  .command("targets-for <doc>")
+  .command("find-targets <doc>")
   .description("List tracked targets for a specific doc")
-  .action((doc: string) => {
-    targetsForCommand(doc);
-  });
+  .action(findTargetsCommand);
 
 program
   .command("agents")

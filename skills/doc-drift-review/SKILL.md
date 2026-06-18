@@ -36,8 +36,8 @@ npx tsx .claude/skills/doc-drift-review/scripts/review-doc-drift.ts --doc <doc>
 
 This script:
 
-- calls `npx vulyk docs-for <file>`
-- calls `npx vulyk targets-for <doc>` in reverse mode
+- calls `npx vulyk find-docs <file>`
+- calls `npx vulyk find-targets <doc>` in reverse mode
 - reads the file
 - reads all matched local docs
 - reads synced external docs when a local markdown copy exists

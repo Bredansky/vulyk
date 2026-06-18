@@ -220,21 +220,21 @@ function isTargetsForResult(value: unknown): value is TargetsForResult {
 }
 
 function runDocsFor(targetFile: string, projectRoot: string): DocsForResult {
-  const stdout = execFileSync("npx", ["vulyk", "docs-for", targetFile], {
+  const stdout = execFileSync("npx", ["vulyk", "find-docs", targetFile], {
     cwd: projectRoot,
     encoding: "utf8",
   });
 
   const parsed: unknown = JSON.parse(stdout);
   if (!isDocsForResult(parsed)) {
-    throw new Error(`Unexpected vulyk docs-for output for ${targetFile}.`);
+    throw new Error(`Unexpected vulyk find-docs output for ${targetFile}.`);
   }
 
   return parsed;
 }
 
 function runTargetsFor(docPath: string, projectRoot: string): TargetsForResult {
-  const result = spawnSync("npx", ["vulyk", "targets-for", docPath], {
+  const result = spawnSync("npx", ["vulyk", "find-targets", docPath], {
     cwd: projectRoot,
     encoding: "utf8",
   });
@@ -249,7 +249,7 @@ function runTargetsFor(docPath: string, projectRoot: string): TargetsForResult {
 
   const parsed: unknown = JSON.parse(result.stdout);
   if (!isTargetsForResult(parsed)) {
-    throw new Error(`Unexpected vulyk targets-for output for ${docPath}.`);
+    throw new Error(`Unexpected vulyk find-targets output for ${docPath}.`);
   }
 
   return parsed;
@@ -333,7 +333,7 @@ function buildFileReviewBundle(
     },
     docs,
     metadata: {
-      docsForCommand: `npx vulyk docs-for ${inputPath}`,
+      docsForCommand: `npx vulyk find-docs ${inputPath}`,
       externalSyncMissing: docs.some(
         (doc) =>
           doc.kind === "external" && doc.availability === "missing_synced_copy",
@@ -394,7 +394,7 @@ function buildDocReviewBundle(
         },
       ],
       metadata: {
-        targetsForCommand: `npx vulyk targets-for ${inputPath}`,
+        targetsForCommand: `npx vulyk find-targets ${inputPath}`,
       },
     };
   }
@@ -451,7 +451,7 @@ function buildDocReviewBundle(
       };
     }),
     metadata: {
-      targetsForCommand: `npx vulyk targets-for ${inputPath}`,
+      targetsForCommand: `npx vulyk find-targets ${inputPath}`,
     },
   };
 }
