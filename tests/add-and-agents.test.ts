@@ -67,7 +67,7 @@ void test("addCommand installs a local skill and writes config inline when no gr
   );
   assert.match(manifestBody, /"outputPaths":\s*\[[\s\S]*"\.agents\/skills"/);
   assert.match(manifestBody, /"validate":\s*\{[\s\S]*"mustContain"/);
-  assert.match(manifestBody, /"gitignoreGenerated":\s*true/);
+  assert.match(manifestBody, /"gitIgnore":\s*true/);
 
   // The entry has no `group` reference; the inline config stands on its own.
   const manifest = readManifest(path.join(projectRoot, "vulyk.json"));
@@ -76,7 +76,7 @@ void test("addCommand installs a local skill and writes config inline when no gr
   assert.equal(alpha.group, undefined);
   assert.deepEqual(alpha.outputPaths, [".agents/skills"]);
   assert.deepEqual(alpha.validate, { mustContain: ["SKILL.md"] });
-  assert.equal(alpha.gitignoreGenerated, true);
+  assert.equal(alpha.gitIgnore, true);
 
   assert.equal(
     fs.existsSync(
@@ -156,7 +156,7 @@ void test("addCommand installs a local doc and writes config inline when no grou
   assert.equal(manifest.entries.guide.group, undefined);
   assert.deepEqual(manifest.entries.guide.outputPaths, ["docs/external"]);
   assert.deepEqual(manifest.entries.guide.validate, { fileExtension: ".md" });
-  assert.equal(manifest.entries.guide.gitignoreGenerated, true);
+  assert.equal(manifest.entries.guide.gitIgnore, true);
   assert.equal(
     fs.existsSync(path.join(projectRoot, "docs/external", "guide.md")),
     true,
@@ -172,7 +172,7 @@ void test("addCommand honors an existing group's outputPaths", async () => {
       skills: {
         outputPaths: ["managed-skills", ".claude/skills"],
         validate: { mustContain: ["SKILL.md"] },
-        gitignoreGenerated: true,
+        gitIgnore: true,
       },
     },
     entries: {},
@@ -213,7 +213,7 @@ void test("entry-level outputPaths overrides group outputPaths at sync time", as
       skills: {
         outputPaths: ["managed-skills"],
         validate: { mustContain: ["SKILL.md"] },
-        gitignoreGenerated: true,
+        gitIgnore: true,
       },
     },
     entries: {
@@ -222,7 +222,7 @@ void test("entry-level outputPaths overrides group outputPaths at sync time", as
         group: "skills",
         // Per-entry override — beats the group's ["managed-skills"].
         outputPaths: [".claude/skills"],
-        gitignoreGenerated: false,
+        gitIgnore: false,
       },
     },
   });
@@ -538,7 +538,7 @@ void test("agentsCommand does not gitignore local sources that share a managed o
       skills: {
         outputPaths: ["skills", "managed-skills"],
         validate: { mustContain: ["SKILL.md"] },
-        // No gitignoreGenerated here — defaults apply per source:
+        // No gitIgnore here — defaults apply per source:
         // local source path is left alone, remote copy is gitignored.
       },
     },

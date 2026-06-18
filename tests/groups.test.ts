@@ -117,8 +117,8 @@ void test("resolveAlso: falls back to entry.also only", () => {
 
 void test("resolveGitignoreGenerated: entry > group > manifest, undefined if none set", () => {
   const manifest = makeManifest({
-    gitignoreGenerated: false,
-    groups: { skills: { gitignoreGenerated: true } },
+    gitIgnore: false,
+    groups: { skills: { gitIgnore: true } },
     entries: {
       a: { source: "src/a", group: "skills" },
       b: { source: "src/b", group: "skills" },
@@ -128,7 +128,7 @@ void test("resolveGitignoreGenerated: entry > group > manifest, undefined if non
   manifest.entries.a = {
     source: "src/a",
     group: "skills",
-    gitignoreGenerated: false,
+    gitIgnore: false,
   };
   assert.equal(resolveGitignoreGenerated(manifest, "a"), false);
   assert.equal(resolveGitignoreGenerated(manifest, "b"), true);

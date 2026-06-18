@@ -6,7 +6,7 @@ export const DocRuleSchema = z.object({
   match: z.array(z.string()).min(1),
   outputPaths: z.array(z.string()).min(1).optional().default(["docs/external"]),
   also: z.array(z.string()).default([]),
-  gitignoreGenerated: z.boolean().optional(),
+  gitIgnore: z.boolean().optional(),
 });
 
 export type DocRule = z.infer<typeof DocRuleSchema>;
@@ -21,7 +21,7 @@ export const GroupSchema = z.object({
   // Explicit opt-out; beats `enabled`.
   disabled: z.array(z.string()).optional(),
   // Whether installed files should be added to .gitignore.
-  gitignoreGenerated: z.boolean().optional(),
+  gitIgnore: z.boolean().optional(),
   // Validation rules — used by `vulyk add` to auto-detect group.
   validate: z
     .object({
@@ -48,7 +48,7 @@ export const EntrySchema = z.object({
   // Per-entry alias override (e.g., extra AGENTS.md/CLAUDE.md files).
   also: z.array(z.string()).optional(),
   // Per-entry gitignore override.
-  gitignoreGenerated: z.boolean().optional(),
+  gitIgnore: z.boolean().optional(),
   // Per-entry validate block. Used by `vulyk add` to auto-detect this entry's
   // own group-less classification; ignored at sync time. Lets a single entry
   // carry its full group config inline without a `groups` block.
@@ -77,7 +77,7 @@ export const ManifestSchema = z.object({
   outputPaths: z.array(z.string()).optional(),
   enabled: z.array(z.string()).optional(),
   disabled: z.array(z.string()).optional(),
-  gitignoreGenerated: z.boolean().optional(),
+  gitIgnore: z.boolean().optional(),
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;

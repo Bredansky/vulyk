@@ -21,13 +21,13 @@ import type { Manifest, Group } from "../types.js";
 const DEFAULT_DIR_GROUP = {
   outputPaths: [".agents/skills"],
   validate: { mustContain: ["SKILL.md"] },
-  gitignoreGenerated: true,
+  gitIgnore: true,
 };
 
 const DEFAULT_FILE_GROUP = {
   outputPaths: ["docs/external"],
   validate: { fileExtension: ".md" },
-  gitignoreGenerated: true,
+  gitIgnore: true,
 };
 
 interface SourceShape {
@@ -102,7 +102,7 @@ function defaultGroupFor(
 function inlineEntryFor(shape: SourceShape): {
   outputPaths: string[];
   validate: { mustContain?: string[]; fileExtension?: string };
-  gitignoreGenerated: boolean;
+  gitIgnore: boolean;
 } {
   return shape.isFile ? { ...DEFAULT_FILE_GROUP } : { ...DEFAULT_DIR_GROUP };
 }
@@ -114,7 +114,7 @@ function inlineEntryFor(shape: SourceShape): {
  *
  * Returns `undefined` when no group is needed: the manifest has no groups
  * at all, so the entry should carry its config inline. The caller is
- * responsible for filling in inline `outputPaths`/`validate`/`gitignoreGenerated`.
+ * responsible for filling in inline `outputPaths`/`validate`/`gitIgnore`.
  */
 function resolveGroupForSource(
   manifest: Manifest,
@@ -142,7 +142,7 @@ function installEntry(
       `Entry "${entryName}" has no outputPaths (entry, group, or manifest).`,
     );
   }
-  // The manifest's gitignoreGenerated field always wins. If unset, the
+  // The manifest's gitIgnore field always wins. If unset, the
   // install function uses a per-path heuristic: gitignore managed copies
   // but leave a local source path alone when source == destination.
   const explicitGitignore = resolveGitignoreGenerated(manifest, entryName);

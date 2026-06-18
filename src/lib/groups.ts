@@ -54,11 +54,11 @@ export function resolveGitignoreGenerated(
   entryName: string,
 ): boolean | undefined {
   const entry = getEntry(manifest, entryName);
-  if (entry?.gitignoreGenerated !== undefined) return entry.gitignoreGenerated;
+  if (entry?.gitIgnore !== undefined) return entry.gitIgnore;
   const group = resolveGroupForEntry(manifest, entryName);
-  if (group?.gitignoreGenerated !== undefined) return group.gitignoreGenerated;
-  if (manifest.gitignoreGenerated !== undefined) {
-    return manifest.gitignoreGenerated;
+  if (group?.gitIgnore !== undefined) return group.gitIgnore;
+  if (manifest.gitIgnore !== undefined) {
+    return manifest.gitIgnore;
   }
   return undefined;
 }
@@ -177,7 +177,7 @@ export function resolveRuleForTarget(
       match: [],
       outputPaths: ["docs/external"],
       also: [],
-      gitignoreGenerated: true,
+      gitIgnore: true,
     },
   };
 }

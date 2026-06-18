@@ -180,7 +180,7 @@ export function install(
   }
 
   // Gitignore handling.
-  // - If the manifest explicitly set gitignoreGenerated, use it.
+  // - If the manifest explicitly set gitIgnore, use it.
   // - Otherwise default to a per-path heuristic: gitignore a path unless
   //   the install location is the same as the source (i.e. a local source
   //   that lives at the same path as one of its declared output paths —
