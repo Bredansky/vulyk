@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { addCommand } from "../src/commands/add.js";
-import { syncCommand } from "../src/commands/sync.js";
+import { agentsCommand } from "../src/commands/agents.js";
 import { updateCommand } from "../src/commands/update.js";
 import {
   skillOutputAddCommand,
@@ -41,10 +41,9 @@ void test("addCommand installs a local skill and stores a relative source path",
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    skills: {
-      outputPaths: ["managed-skills"],
-      entries: {},
-    },
+    entries: {},
+    skillOutputPaths: ["managed-skills"],
+    docRules: {},
   });
   writeFile(
     path.join(projectRoot, "sources", "alpha", "SKILL.md"),
@@ -63,7 +62,10 @@ void test("addCommand installs a local skill and stores a relative source path",
     path.join(projectRoot, "vulyk.json"),
     "utf8",
   );
-  assert.match(manifestBody, /"alpha":\s*\{\s*"source": "sources\/alpha"/);
+  assert.match(
+    manifestBody,
+    /"alpha":\s*\{\s*"type": "skill",\s*"source": "sources\/alpha"/,
+  );
   assert.equal(
     fs.existsSync(
       path.join(projectRoot, "managed-skills", "alpha", "SKILL.md"),
@@ -77,10 +79,9 @@ void test("addCommand expands a local collection into per-skill sources", async 
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    skills: {
-      outputPaths: ["managed-skills"],
-      entries: {},
-    },
+    entries: {},
+    skillOutputPaths: ["managed-skills"],
+    docRules: {},
   });
   writeFile(
     path.join(projectRoot, "sources", "pack", "one", "SKILL.md"),
@@ -103,8 +104,14 @@ void test("addCommand expands a local collection into per-skill sources", async 
     path.join(projectRoot, "vulyk.json"),
     "utf8",
   );
-  assert.match(manifestBody, /"one":\s*\{\s*"source": "sources\/pack\/one"/);
-  assert.match(manifestBody, /"two":\s*\{\s*"source": "sources\/pack\/two"/);
+  assert.match(
+    manifestBody,
+    /"one":\s*\{\s*"type": "skill",\s*"source": "sources\/pack\/one"/,
+  );
+  assert.match(
+    manifestBody,
+    /"two":\s*\{\s*"type": "skill",\s*"source": "sources\/pack\/two"/,
+  );
   assert.equal(
     fs.existsSync(path.join(projectRoot, "managed-skills", "one", "SKILL.md")),
     true,
@@ -115,19 +122,19 @@ void test("addCommand expands a local collection into per-skill sources", async 
   );
 });
 
-void test("syncCommand and updateCommand install local skills directly from disk", async () => {
+void test("agentsCommand and updateCommand install local skills directly from disk", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    skills: {
-      outputPaths: ["managed-skills"],
-      entries: {
-        alpha: {
-          source: "sources/alpha",
-        },
+    entries: {
+      alpha: {
+        type: "skill",
+        source: "sources/alpha",
       },
     },
+    skillOutputPaths: ["managed-skills"],
+    docRules: {},
   });
   writeFile(
     path.join(projectRoot, "sources", "alpha", "SKILL.md"),
@@ -137,7 +144,7 @@ void test("syncCommand and updateCommand install local skills directly from disk
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await syncCommand();
+    await agentsCommand();
     const installedSkillPath = path.join(
       projectRoot,
       "managed-skills",
@@ -163,14 +170,14 @@ void test("local skill sources can share a codex-style output root without being
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    skills: {
-      outputPaths: ["skills", "managed-skills"],
-      entries: {
-        alpha: {
-          source: "skills/alpha",
-        },
+    entries: {
+      alpha: {
+        type: "skill",
+        source: "skills/alpha",
       },
     },
+    skillOutputPaths: ["skills", "managed-skills"],
+    docRules: {},
   });
   writeFile(
     path.join(projectRoot, "skills", "alpha", "SKILL.md"),
@@ -180,7 +187,7 @@ void test("local skill sources can share a codex-style output root without being
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await syncCommand();
+    await agentsCommand();
 
     assert.equal(
       fs.readFileSync(
@@ -222,9 +229,9 @@ void test("skill output commands manage outputPaths in the manifest", () => {
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    skills: {
-      outputPaths: [".claude/skills"],
-    },
+    entries: {},
+    skillOutputPaths: [".agents/skills", ".claude/skills"],
+    docRules: {},
   });
 
   const initialCwd = process.cwd();
@@ -238,26 +245,29 @@ void test("skill output commands manage outputPaths in the manifest", () => {
       path.join(projectRoot, "vulyk.json"),
       "utf8",
     );
-    assert.match(manifestBody, /"outputPaths": \[\s*"skills"\s*\]/);
+    assert.match(
+      manifestBody,
+      /"skillOutputPaths": \[\s*"\.agents\/skills",\s*"skills"\s*\]/,
+    );
     assert.doesNotMatch(manifestBody, /\.claude\/skills/);
   } finally {
     process.chdir(initialCwd);
   }
 });
 
-void test("syncCommand prunes stale managed remote skills from removed output paths", async () => {
+void test("agentsCommand prunes stale managed remote skills from removed output paths", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    skills: {
-      outputPaths: [".claude/skills", ".codex/skills"],
-      entries: {
-        alpha: {
-          source: "sources/alpha",
-        },
+    entries: {
+      alpha: {
+        type: "skill",
+        source: "sources/alpha",
       },
     },
+    skillOutputPaths: [".claude/skills", ".codex/skills"],
+    docRules: {},
   });
   writeFile(
     path.join(projectRoot, "sources", "alpha", "SKILL.md"),
@@ -281,7 +291,7 @@ void test("syncCommand prunes stale managed remote skills from removed output pa
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await syncCommand();
+    await agentsCommand();
 
     assert.equal(
       fs.existsSync(path.join(projectRoot, "skills", "remote-one")),

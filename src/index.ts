@@ -4,7 +4,7 @@ import { addCommand } from "./commands/add.js";
 import { removeCommand } from "./commands/remove.js";
 import { enableCommand, disableCommand } from "./commands/toggle.js";
 import { listCommand } from "./commands/list.js";
-import { syncCommand } from "./commands/sync.js";
+import { agentsCommand } from "./commands/agents.js";
 import { updateCommand } from "./commands/update.js";
 import { diffCommand } from "./commands/diff.js";
 import { docsCommand } from "./commands/docs.js";
@@ -165,10 +165,10 @@ program
   });
 
 program
-  .command("sync")
+  .command("agents")
   .description("Reinstall all enabled skills")
   .action(async () => {
-    await syncCommand();
+    await agentsCommand();
   });
 
 program.parse();

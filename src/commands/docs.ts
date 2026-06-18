@@ -311,7 +311,7 @@ export function docsCommand(opts: { also?: string[] }): void {
 
     if (!sourcePath || !fs.existsSync(sourcePath)) {
       throw new Error(
-        `Doc source file not found for "${name}". Run \`vulyk sync\` first.`,
+        `Doc source file not found for "${name}". Run \`vulyk agents\` first.`,
       );
     }
 

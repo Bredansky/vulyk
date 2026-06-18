@@ -53,7 +53,7 @@ function addSingle(
 
   if (type === "skill" && !isEnabled(manifest, installedName)) {
     log.warn(
-      `"${installedName}" added but not in enabled whitelist -- won't install on sync`,
+      `"${installedName}" added but not in enabled whitelist -- won't install on agents`,
     );
   }
 
@@ -104,7 +104,7 @@ function addLocalSingle(
 
   if (type === "skill" && !isEnabled(manifest, installedName)) {
     log.warn(
-      `"${installedName}" added but not in enabled whitelist -- won't install on sync`,
+      `"${installedName}" added but not in enabled whitelist -- won't install on agents`,
     );
   }
 

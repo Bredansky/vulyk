@@ -253,7 +253,7 @@ function cleanupStaleExternalDocFiles(manifestPath: string): void {
   }
 }
 
-export async function syncCommand(): Promise<void> {
+export async function agentsCommand(): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
     log.error("No vulyk.json found.");

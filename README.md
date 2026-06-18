@@ -2,7 +2,7 @@
 
 > :bee: vulyk means _hive_ in Ukrainian
 
-`vulyk` is a lightweight, spec-driven package manager for AI agent skills, tracked docs, and generated `AGENTS.md` files. It installs skills from local paths or remote sources, syncs them across clones, and keeps agent context reproducible.
+`vulyk` is a lightweight, spec-driven package manager for AI agent skills, tracked docs, and generated `AGENTS.md` files. It installs skills from local paths or remote sources, installs them across clones, and keeps agent context reproducible.
 
 This repo can also host canonical skills under `skills/` that projects consume via pinned GitHub `tree/<commit>` URLs.
 
@@ -21,7 +21,7 @@ vulyk add "https://github.com/nicobailon/visual-explainer/tree/main/plugins/visu
 vulyk doc-add "https://github.com/alan2207/bulletproof-react/blob/main/docs/project-structure.md" \
   --targets src \
   --description "Project structure conventions."
-vulyk sync
+vulyk agents
 ```
 
 ## :hammer_and_wrench: Commands
@@ -145,9 +145,9 @@ It returns:
 - the declared `targets` from `docs.entries`
 - target kinds for each path: `directory`, `file`, or `glob`
 
-### `vulyk sync`
+### `vulyk agents`
 
-The `npm install` for this manifest. It syncs local and remote skills, syncs remote docs into rule-selected output paths, and regenerates `AGENTS.md` plus aliases.
+The `npm install` for this manifest. It installs local and remote skills, installs remote docs into rule-selected output paths, and regenerates `AGENTS.md` plus aliases.
 
 ## :receipt: `vulyk.json`
 
@@ -214,7 +214,7 @@ GitHub-backed remote sources in `vulyk.json` must use commit-pinned `blob` or `t
 
 - Each installed skill gets a `.vulyk` marker file.
 - Root `.gitignore` is updated with skill paths and generated doc files that are configured to be ignored.
-- Local skills without a `.vulyk` marker are never removed by `sync`.
+- Local skills without a `.vulyk` marker are never removed by `agents`.
 - Local skills are installed directly from their source directories, while remote skills are fetched into managed outputs.
 - If a local skill already lives under one of the configured `skills.outputPaths`, Vulyk preserves that source directory in place instead of copying it into itself or gitignoring it.
 - Local docs are referenced directly from the manifest, while remote docs are materialized into the matched rule's `outputPaths`.

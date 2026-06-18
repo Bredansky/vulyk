@@ -42,20 +42,19 @@ void test("docsCommand prunes stale generated files when a target bucket disappe
     recursive: true,
   });
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    docs: {
-      rules: {
-        claude: {
-          match: [".claude/**"],
-          also: ["CLAUDE.md"],
-        },
+    entries: {
+      skills: {
+        type: "doc",
+        source: "docs/skills.md",
+        targets: [".claude/skills"],
+        description: "Skills guidance.",
+        gitignoreGenerated: false,
       },
-      entries: {
-        skills: {
-          source: "docs/skills.md",
-          targets: [".claude/skills"],
-          description: "Skills guidance.",
-          gitignoreGenerated: false,
-        },
+    },
+    docRules: {
+      claude: {
+        match: [".claude/**"],
+        also: ["CLAUDE.md"],
       },
     },
   });
@@ -74,14 +73,12 @@ void test("docsCommand prunes stale generated files when a target bucket disappe
     );
 
     writeJson(path.join(projectRoot, "vulyk.json"), {
-      docs: {
-        rules: {
-          claude: {
-            match: [".claude/**"],
-            also: ["CLAUDE.md"],
-          },
+      entries: {},
+      docRules: {
+        claude: {
+          match: [".claude/**"],
+          also: ["CLAUDE.md"],
         },
-        entries: {},
       },
     });
 
@@ -109,26 +106,26 @@ void test("docsCommand keeps a bucket alive when another entry still targets it"
   writeFile(path.join(projectRoot, ".claude", "skills", "example.txt"), "x");
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    docs: {
-      rules: {
-        claude: {
-          match: [".claude/**"],
-          also: ["CLAUDE.md"],
-        },
+    entries: {
+      first: {
+        type: "doc",
+        source: "docs/one.md",
+        targets: [".claude/skills"],
+        description: "First doc.",
+        gitignoreGenerated: false,
       },
-      entries: {
-        first: {
-          source: "docs/one.md",
-          targets: [".claude/skills"],
-          description: "First doc.",
-          gitignoreGenerated: false,
-        },
-        second: {
-          source: "docs/two.md",
-          targets: [".claude/skills/example.txt"],
-          description: "Second doc.",
-          gitignoreGenerated: false,
-        },
+      second: {
+        type: "doc",
+        source: "docs/two.md",
+        targets: [".claude/skills/example.txt"],
+        description: "Second doc.",
+        gitignoreGenerated: false,
+      },
+    },
+    docRules: {
+      claude: {
+        match: [".claude/**"],
+        also: ["CLAUDE.md"],
       },
     },
   });
@@ -143,20 +140,19 @@ void test("docsCommand keeps a bucket alive when another entry still targets it"
     assert.match(fs.readFileSync(agentsPath, "utf8"), /# Two/);
 
     writeJson(path.join(projectRoot, "vulyk.json"), {
-      docs: {
-        rules: {
-          claude: {
-            match: [".claude/**"],
-            also: ["CLAUDE.md"],
-          },
+      entries: {
+        second: {
+          type: "doc",
+          source: "docs/two.md",
+          targets: [".claude/skills/example.txt"],
+          description: "Second doc.",
+          gitignoreGenerated: false,
         },
-        entries: {
-          second: {
-            source: "docs/two.md",
-            targets: [".claude/skills/example.txt"],
-            description: "Second doc.",
-            gitignoreGenerated: false,
-          },
+      },
+      docRules: {
+        claude: {
+          match: [".claude/**"],
+          also: ["CLAUDE.md"],
         },
       },
     });
@@ -183,24 +179,24 @@ void test("docsCommand gitignores generated doc marker files for active buckets"
   });
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    docs: {
-      rules: {
-        claude: {
-          match: [".claude/**"],
-          also: ["CLAUDE.md"],
-        },
+    entries: {
+      root: {
+        type: "doc",
+        source: "docs/root.md",
+        targets: ["README.md"],
+        description: "Root doc.",
       },
-      entries: {
-        root: {
-          source: "docs/root.md",
-          targets: ["README.md"],
-          description: "Root doc.",
-        },
-        claude: {
-          source: "docs/claude.md",
-          targets: [".claude/settings.json"],
-          description: "Claude doc.",
-        },
+      claude: {
+        type: "doc",
+        source: "docs/claude.md",
+        targets: [".claude/settings.json"],
+        description: "Claude doc.",
+      },
+    },
+    docRules: {
+      claude: {
+        match: [".claude/**"],
+        also: ["CLAUDE.md"],
       },
     },
   });
@@ -232,20 +228,19 @@ void test("docsCommand writes honeypot-style doc markers with generated filename
     recursive: true,
   });
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    docs: {
-      rules: {
-        claude: {
-          match: [".claude/**"],
-          also: ["CLAUDE.md"],
-        },
+    entries: {
+      skills: {
+        type: "doc",
+        source: "docs/skills.md",
+        targets: [".claude/skills"],
+        description: "Skills guidance.",
+        gitignoreGenerated: false,
       },
-      entries: {
-        skills: {
-          source: "docs/skills.md",
-          targets: [".claude/skills"],
-          description: "Skills guidance.",
-          gitignoreGenerated: false,
-        },
+    },
+    docRules: {
+      claude: {
+        match: [".claude/**"],
+        also: ["CLAUDE.md"],
       },
     },
   });
@@ -287,9 +282,8 @@ void test("docsCommand still cleans up stale buckets written with legacy JSON do
     files: ["AGENTS.md", "CLAUDE.md"],
   });
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    docs: {
-      entries: {},
-    },
+    entries: {},
+    docRules: {},
   });
 
   const initialCwd = process.cwd();

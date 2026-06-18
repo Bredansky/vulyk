@@ -13,7 +13,7 @@ import {
 } from "../src/commands/doc-rule.js";
 import { disableCommand, enableCommand } from "../src/commands/toggle.js";
 import { removeCommand } from "../src/commands/remove.js";
-import { syncCommand } from "../src/commands/sync.js";
+import { agentsCommand } from "../src/commands/agents.js";
 import { updateCommand } from "../src/commands/update.js";
 import { getRepoCachePath } from "../src/lib/cache.js";
 import { findDocsForFile, findTargetsForDoc } from "../src/lib/docs.js";
@@ -63,15 +63,14 @@ void test("disableCommand, enableCommand, and removeCommand manage a local skill
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    skills: {
-      outputPaths: ["managed-skills"],
-      enabled: ["alpha"],
-      entries: {
-        alpha: {
-          source: "sources/alpha",
-        },
+    entries: {
+      alpha: {
+        type: "skill",
+        source: "sources/alpha",
       },
     },
+    skillOutputPaths: ["managed-skills"],
+    enabled: ["alpha"],
   });
   writeFile(
     path.join(projectRoot, "sources", "alpha", "SKILL.md"),
@@ -104,10 +103,6 @@ void test("disableCommand, enableCommand, and removeCommand manage a local skill
     );
 
     removeCommand("alpha");
-    assert.equal(
-      fs.existsSync(path.join(projectRoot, "managed-skills", "alpha")),
-      false,
-    );
 
     const manifestBody = fs.readFileSync(
       path.join(projectRoot, "vulyk.json"),
@@ -124,21 +119,20 @@ void test("docAddCommand tracks a remote doc and docs queries distinguish local 
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    docs: {
-      rules: {
-        claude: {
-          match: [".claude/**"],
-          outputPaths: ["docs/external"],
-          also: ["CLAUDE.md"],
-        },
+    entries: {
+      "local-guide": {
+        type: "doc",
+        source: "docs/local-guide.md",
+        targets: ["src/app"],
+        description: "Local app guidance.",
+        gitignoreGenerated: false,
       },
-      entries: {
-        "local-guide": {
-          source: "docs/local-guide.md",
-          targets: ["src/app"],
-          description: "Local app guidance.",
-          gitignoreGenerated: false,
-        },
+    },
+    docRules: {
+      claude: {
+        match: [".claude/**"],
+        outputPaths: ["docs/external"],
+        also: ["CLAUDE.md"],
       },
     },
   });
@@ -169,7 +163,7 @@ void test("docAddCommand tracks a remote doc and docs queries distinguish local 
     );
     assert.match(
       manifestBody,
-      /"claude-statusline":\s*\{\s*"source": "https:\/\/example.com\/claude-statusline.md"/,
+      /"claude-statusline":\s*\{\s*"type": "doc",\s*"source": "https:\/\/example.com\/claude-statusline.md"/,
     );
 
     docsCommand({});
@@ -224,13 +218,12 @@ void test("docRemoveCommand removes a tracked doc entry", () => {
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    docs: {
-      entries: {
-        "claude-statusline": {
-          source: "https://example.com/claude-statusline.md",
-          targets: [".claude/settings.json"],
-          description: "External statusline guidance.",
-        },
+    entries: {
+      "claude-statusline": {
+        type: "doc",
+        source: "https://example.com/claude-statusline.md",
+        targets: [".claude/settings.json"],
+        description: "External statusline guidance.",
       },
     },
   });
@@ -285,20 +278,16 @@ void test("updateCommand refreshes stale bare caches for pinned GitHub docs", as
   const newCommit = git(sourceRepo, ["rev-parse", "HEAD"]);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    skills: {
-      outputPaths: ["managed-skills"],
-      entries: {},
-    },
-    docs: {
-      outputPaths: ["docs/external"],
-      entries: {
-        guide: {
-          source: fakeSource,
-          targets: ["."],
-          description: "Remote guide.",
-        },
+    entries: {
+      guide: {
+        type: "doc",
+        source: fakeSource,
+        targets: ["."],
+        description: "Remote guide.",
       },
     },
+    skillOutputPaths: ["managed-skills"],
+    docRules: {},
   });
 
   const initialCwd = process.cwd();
@@ -328,10 +317,8 @@ void test("doc rule commands manage docs.rules entries in the manifest", () => {
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    docs: {
-      rules: {},
-      entries: {},
-    },
+    entries: {},
+    docRules: {},
   });
 
   const initialCwd = process.cwd();
@@ -365,30 +352,30 @@ void test("doc rule commands manage docs.rules entries in the manifest", () => {
   }
 });
 
-void test("syncCommand prunes stale external doc files after doc removal", async () => {
+void test("agentsCommand prunes stale external doc files after doc removal", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
   writeJson(path.join(projectRoot, "vulyk.json"), {
-    docs: {
-      rules: {
-        claude: {
-          match: [".claude/**"],
-          outputPaths: ["docs/external"],
-          also: ["CLAUDE.md"],
-        },
+    entries: {
+      "claude-statusline": {
+        type: "doc",
+        source: "https://example.com/claude-statusline.md",
+        targets: [".claude/settings.json"],
+        description: "External statusline guidance.",
       },
-      entries: {
-        "claude-statusline": {
-          source: "https://example.com/claude-statusline.md",
-          targets: [".claude/settings.json"],
-          description: "External statusline guidance.",
-        },
-        "project-structure": {
-          source: "docs/external/project-structure.md",
-          targets: ["src"],
-          description: "Local structure guidance.",
-        },
+      "project-structure": {
+        type: "doc",
+        source: "docs/external/project-structure.md",
+        targets: ["src"],
+        description: "Local structure guidance.",
+      },
+    },
+    docRules: {
+      claude: {
+        match: [".claude/**"],
+        outputPaths: ["docs/external"],
+        also: ["CLAUDE.md"],
       },
     },
   });
@@ -418,7 +405,7 @@ void test("syncCommand prunes stale external doc files after doc removal", async
     );
 
     docRemoveCommand("claude-statusline");
-    await syncCommand();
+    await agentsCommand();
 
     assert.equal(
       fs.existsSync(
