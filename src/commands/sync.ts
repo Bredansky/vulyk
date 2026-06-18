@@ -68,23 +68,26 @@ function cleanupStaleManagedSkillPaths(manifestPath: string): void {
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
   const expectedSkillEntries = new Set(
-    Object.entries(manifest.skills.entries).flatMap(([name, entry]) => {
-      const preservedPaths = new Set(
-        getPreservedLocalSkillPaths(
-          projectRoot,
-          name,
-          entry.source,
-          manifest.skills.outputPaths,
-        ).map((value) => path.resolve(value)),
-      );
+    Object.entries(manifest.entries)
+      .filter(([, entry]) => entry.type === "skill")
+      .flatMap(([name, entry]) => {
+        if (entry.type !== "skill") return [];
+        const preservedPaths = new Set(
+          getPreservedLocalSkillPaths(
+            projectRoot,
+            name,
+            entry.source,
+            manifest.skillOutputPaths,
+          ).map((value) => path.resolve(value)),
+        );
 
-      return manifest.skills.outputPaths
-        .filter((outputPath) => {
-          const candidatePath = path.resolve(projectRoot, outputPath, name);
-          return !preservedPaths.has(candidatePath);
-        })
-        .map((outputPath) => `${outputPath}/${name}/`);
-    }),
+        return manifest.skillOutputPaths
+          .filter((outputPath) => {
+            const candidatePath = path.resolve(projectRoot, outputPath, name);
+            return !preservedPaths.has(candidatePath);
+          })
+          .map((outputPath) => `${outputPath}/${name}/`);
+      }),
   );
   const expectedSkillDirs = new Set(
     [...expectedSkillEntries].map((entry) =>
@@ -133,8 +136,10 @@ function cleanupStaleManagedSkillPaths(manifestPath: string): void {
 
 async function syncExternalDocs(manifestPath: string): Promise<void> {
   const manifest = readManifest(manifestPath);
-  const docEntries = Object.entries(manifest.docs.entries).filter(([, entry]) =>
-    isRemoteDocSource(path.dirname(manifestPath), entry.source),
+  const docEntries = Object.entries(manifest.entries).filter(
+    ([, entry]) =>
+      entry.type === "doc" &&
+      isRemoteDocSource(path.dirname(manifestPath), entry.source),
   );
   if (docEntries.length === 0) return;
 
@@ -143,6 +148,7 @@ async function syncExternalDocs(manifestPath: string): Promise<void> {
   let changed = false;
 
   for (const [name, entry] of docEntries) {
+    if (entry.type !== "doc") continue;
     log.info(`  syncing doc ${name}...`);
 
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", `doc-${name}`);
@@ -170,7 +176,7 @@ async function syncExternalDocs(manifestPath: string): Promise<void> {
       }
 
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      manifest.docs.entries[name] = {
+      manifest.entries[name] = {
         ...entry,
         source: normalizedSource,
       };
@@ -193,7 +199,8 @@ function cleanupStaleExternalDocFiles(manifestPath: string): void {
   const outputPathToExpectedFiles = new Map<string, Set<string>>();
   const protectedLocalDocFiles = new Set<string>();
 
-  for (const [name, entry] of Object.entries(manifest.docs.entries)) {
+  for (const [name, entry] of Object.entries(manifest.entries)) {
+    if (entry.type !== "doc") continue;
     if (!isRemoteDocSource(projectRoot, entry.source)) {
       protectedLocalDocFiles.add(path.resolve(projectRoot, entry.source));
       continue;
@@ -259,10 +266,16 @@ export async function syncCommand(): Promise<void> {
   validateDocsManifest(manifest, projectRoot);
   let changed = false;
   cleanupStaleManagedSkillPaths(manifestPath);
-  const skills = Object.entries(manifest.skills.entries);
-  const installedNames = new Set(Object.keys(manifest.skills.entries));
+  const skills = Object.entries(manifest.entries).filter(
+    ([, entry]) => entry.type === "skill",
+  );
+  const installedNames = new Set(
+    Object.entries(manifest.entries)
+      .filter(([, entry]) => entry.type === "skill")
+      .map(([name]) => name),
+  );
 
-  for (const outputPath of manifest.skills.outputPaths) {
+  for (const outputPath of manifest.skillOutputPaths) {
     const resolved = resolvePath(outputPath);
     if (!fs.existsSync(resolved)) continue;
     for (const entry of fs.readdirSync(resolved, { withFileTypes: true })) {
@@ -281,13 +294,14 @@ export async function syncCommand(): Promise<void> {
   }
 
   for (const [name, entry] of skills) {
+    if (entry.type !== "skill") continue;
     if (!isEnabled(manifest, name)) {
-      uninstall(name, manifest.skills.outputPaths, {
+      uninstall(name, manifest.skillOutputPaths, {
         preservePaths: getPreservedLocalSkillPaths(
           projectRoot,
           name,
           entry.source,
-          manifest.skills.outputPaths,
+          manifest.skillOutputPaths,
         ),
       });
       log.dim(`  skipped ${name} (not in whitelist)`);
@@ -298,12 +312,12 @@ export async function syncCommand(): Promise<void> {
     if (isLocalSkillSource(projectRoot, entry.source)) {
       try {
         const sourcePath = resolveSkillSourcePath(projectRoot, entry.source);
-        install(name, sourcePath, manifest.skills.outputPaths, {
+        install(name, sourcePath, manifest.skillOutputPaths, {
           preservePaths: getPreservedLocalSkillPaths(
             projectRoot,
             name,
             entry.source,
-            manifest.skills.outputPaths,
+            manifest.skillOutputPaths,
           ),
         });
         log.success(name);
@@ -322,13 +336,16 @@ export async function syncCommand(): Promise<void> {
 
     try {
       const commit = await fetchSource(parseSource(entry.source), tmpDir);
-      install(name, tmpDir, manifest.skills.outputPaths);
+      install(name, tmpDir, manifest.skillOutputPaths);
       const normalizedSource = commit
         ? pinSpecifier(entry.source, commit)
         : entry.source;
-      const existingEntry = manifest.skills.entries[name];
-      if (existingEntry?.source !== normalizedSource) {
-        manifest.skills.entries[name] = { source: normalizedSource };
+      const existingEntry = manifest.entries[name];
+      if (
+        existingEntry?.type === "skill" &&
+        existingEntry.source !== normalizedSource
+      ) {
+        manifest.entries[name] = { type: "skill", source: normalizedSource };
         changed = true;
       }
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -342,7 +359,10 @@ export async function syncCommand(): Promise<void> {
 
   cleanupStaleExternalDocFiles(manifestPath);
 
-  if (Object.keys(manifest.docs.entries).length > 0) {
+  const docEntries = Object.entries(manifest.entries).filter(
+    ([, entry]) => entry.type === "doc",
+  );
+  if (docEntries.length > 0) {
     log.info("\n  syncing external docs...");
     await syncExternalDocs(manifestPath);
   }

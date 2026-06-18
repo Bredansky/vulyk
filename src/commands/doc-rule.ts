@@ -36,7 +36,7 @@ export function docRuleSetCommand(name: string, opts: DocRuleSetOptions): void {
       : { gitignoreGenerated: opts.gitignoreGenerated }),
   };
 
-  manifest.docs.rules[name] = rule;
+  manifest.docRules[name] = rule;
   writeManifest(manifestPath, manifest);
   log.success(`Set doc rule "${name}"`);
 }
@@ -49,13 +49,13 @@ export function docRuleRemoveCommand(name: string): void {
   }
 
   const manifest = readManifest(manifestPath);
-  if (!manifest.docs.rules[name]) {
+  if (!manifest.docRules[name]) {
     log.error(`Doc rule "${name}" not found`);
     process.exit(1);
   }
 
-  const { [name]: _, ...remainingRules } = manifest.docs.rules;
-  manifest.docs.rules = remainingRules;
+  const { [name]: _, ...remainingRules } = manifest.docRules;
+  manifest.docRules = remainingRules;
   writeManifest(manifestPath, manifest);
   log.success(`Removed doc rule "${name}"`);
 }

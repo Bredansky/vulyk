@@ -79,27 +79,21 @@ export function diffCommand(name?: string): void {
   validateSkillsManifest(manifest, projectRoot);
   validateDocsManifest(manifest, projectRoot);
 
-  const skills = name
-    ? Object.entries(manifest.skills.entries).filter(
+  const entries = name
+    ? Object.entries(manifest.entries).filter(
         ([entryName]) => entryName === name,
       )
-    : Object.entries(manifest.skills.entries);
-  const docs = name
-    ? Object.entries(manifest.docs.entries).filter(
-        ([entryName]) => entryName === name,
-      )
-    : Object.entries(manifest.docs.entries);
+    : Object.entries(manifest.entries);
 
-  if (skills.length === 0 && docs.length === 0) {
+  if (entries.length === 0) {
     log.warn(name ? `"${name}" not found` : "Nothing to diff");
     return;
   }
 
   let hasUpdates = false;
 
-  if (skills.length > 0) {
-    log.print(color.dim("\nSkills:"));
-    for (const [entryName, entry] of skills) {
+  for (const [entryName, entry] of entries) {
+    if (entry.type === "skill") {
       if (isLocalSkillSource(projectRoot, entry.source)) {
         log.print(`  ${color.dim(`${entryName} is local; diff unavailable`)}`);
         continue;
@@ -151,12 +145,7 @@ export function diffCommand(name?: string): void {
           false,
         );
       }
-    }
-  }
-
-  if (docs.length > 0) {
-    log.print(color.dim("\nDocs:"));
-    for (const [entryName, entry] of docs) {
+    } else {
       if (!isRemoteDocSource(projectRoot, entry.source)) {
         log.print(`  ${color.dim(`${entryName} is local; diff unavailable`)}`);
         continue;

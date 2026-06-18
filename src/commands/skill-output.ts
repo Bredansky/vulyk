@@ -14,9 +14,9 @@ export function skillOutputAddCommand(outputPath: string): void {
 
   const manifest = readManifest(manifestPath);
   const normalizedOutputPath = normalizeOutputPath(outputPath);
-  const outputPaths = new Set(manifest.skills.outputPaths);
+  const outputPaths = new Set(manifest.skillOutputPaths);
   outputPaths.add(normalizedOutputPath);
-  manifest.skills.outputPaths = [...outputPaths];
+  manifest.skillOutputPaths = [...outputPaths];
   writeManifest(manifestPath, manifest);
   log.success(`Added skill output "${normalizedOutputPath}"`);
 }
@@ -30,12 +30,12 @@ export function skillOutputRemoveCommand(outputPath: string): void {
 
   const manifest = readManifest(manifestPath);
   const normalizedOutputPath = normalizeOutputPath(outputPath);
-  if (!manifest.skills.outputPaths.includes(normalizedOutputPath)) {
+  if (!manifest.skillOutputPaths.includes(normalizedOutputPath)) {
     log.error(`Skill output "${normalizedOutputPath}" not found`);
     process.exit(1);
   }
 
-  manifest.skills.outputPaths = manifest.skills.outputPaths.filter(
+  manifest.skillOutputPaths = manifest.skillOutputPaths.filter(
     (value) => value !== normalizedOutputPath,
   );
   writeManifest(manifestPath, manifest);

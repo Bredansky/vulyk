@@ -22,34 +22,33 @@ export async function enableCommand(name: string): Promise<void> {
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
   validateSkillsManifest(manifest, projectRoot);
-  if (!manifest.skills.entries[name]) {
-    log.error(`"${name}" not found`);
+
+  const entry = manifest.entries[name];
+  if (entry?.type !== "skill") {
+    log.error(`"${name}" not found or is not a skill`);
     process.exit(1);
   }
 
-  if (!manifest.skills.enabled) {
+  if (!manifest.enabled) {
     log.warn(
-      `No whitelist defined — all skills already enabled. Add "skills.enabled": [] to use a whitelist.`,
+      `No whitelist defined — all skills already enabled. Add "enabled": [] to use a whitelist.`,
     );
     return;
   }
 
-  if (!manifest.skills.enabled.includes(name)) {
-    manifest.skills.enabled.push(name);
+  if (!manifest.enabled.includes(name)) {
+    manifest.enabled.push(name);
     writeManifest(manifestPath, manifest);
   }
 
-  if (isLocalSkillSource(projectRoot, manifest.skills.entries[name].source)) {
-    const sourcePath = resolveSkillSourcePath(
-      projectRoot,
-      manifest.skills.entries[name].source,
-    );
-    install(name, sourcePath, manifest.skills.outputPaths, {
+  if (isLocalSkillSource(projectRoot, entry.source)) {
+    const sourcePath = resolveSkillSourcePath(projectRoot, entry.source);
+    install(name, sourcePath, manifest.skillOutputPaths, {
       preservePaths: getPreservedLocalSkillPaths(
         projectRoot,
         name,
-        manifest.skills.entries[name].source,
-        manifest.skills.outputPaths,
+        entry.source,
+        manifest.skillOutputPaths,
       ),
     });
     log.success(`Enabled "${name}"`);
@@ -60,8 +59,8 @@ export async function enableCommand(name: string): Promise<void> {
   if (fs.existsSync(tmpDir)) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
-  await fetchSource(parseSource(manifest.skills.entries[name].source), tmpDir);
-  install(name, tmpDir, manifest.skills.outputPaths);
+  await fetchSource(parseSource(entry.source), tmpDir);
+  install(name, tmpDir, manifest.skillOutputPaths);
   fs.rmSync(tmpDir, { recursive: true, force: true });
   log.success(`Enabled "${name}"`);
 }
@@ -75,22 +74,26 @@ export function disableCommand(name: string): void {
 
   const manifest = readManifest(manifestPath);
   validateSkillsManifest(manifest, path.dirname(manifestPath));
-  if (!manifest.skills.entries[name]) {
-    log.error(`"${name}" not found`);
+
+  const entry = manifest.entries[name];
+  if (entry?.type !== "skill") {
+    log.error(`"${name}" not found or is not a skill`);
     process.exit(1);
   }
 
-  manifest.skills.enabled = manifest.skills.enabled
-    ? manifest.skills.enabled.filter((n) => n !== name)
-    : Object.keys(manifest.skills.entries).filter((n) => n !== name);
+  manifest.enabled = manifest.enabled
+    ? manifest.enabled.filter((n) => n !== name)
+    : Object.keys(manifest.entries)
+        .filter((k) => manifest.entries[k].type === "skill")
+        .filter((n) => n !== name);
 
   writeManifest(manifestPath, manifest);
-  uninstall(name, manifest.skills.outputPaths, {
+  uninstall(name, manifest.skillOutputPaths, {
     preservePaths: getPreservedLocalSkillPaths(
       path.dirname(manifestPath),
       name,
-      manifest.skills.entries[name].source,
-      manifest.skills.outputPaths,
+      entry.source,
+      manifest.skillOutputPaths,
     ),
   });
   log.success(`Disabled "${name}"`);

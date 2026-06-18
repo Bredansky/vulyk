@@ -6,7 +6,7 @@ import { parseSource, fetchSource } from "../lib/fetcher.js";
 import { detect } from "../lib/detector.js";
 import { install } from "../lib/installer.js";
 import { isEnabled } from "../lib/whitelist.js";
-import { type Manifest } from "../types.js";
+import { type Manifest, type UnifiedEntry } from "../types.js";
 import { log } from "../lib/log.js";
 import {
   pinSpecifier,
@@ -19,7 +19,7 @@ import {
 } from "../lib/skills.js";
 
 function getPrimarySkillOutputPath(manifest: Manifest): string {
-  return manifest.skills.outputPaths[0] ?? "skills";
+  return manifest.skillOutputPaths[0] ?? ".agents/skills";
 }
 
 function addSingle(
@@ -27,21 +27,38 @@ function addSingle(
   tmpDir: string,
   commit: string | null,
   manifest: Manifest,
-): void {
-  const installedName = install(specifier, tmpDir, manifest.skills.outputPaths);
-  manifest.skills.entries[installedName] = {
+  type: "skill" | "doc",
+): string {
+  const installedName = install(
+    specifier,
+    tmpDir,
+    type === "skill" ? manifest.skillOutputPaths : [],
+  );
+
+  const baseEntry: UnifiedEntry =
+    type === "skill"
+      ? { type: "skill", source: "" }
+      : {
+          type: "doc",
+          source: "",
+          targets: [getPrimarySkillOutputPath(manifest)],
+        };
+
+  manifest.entries[installedName] = {
+    ...baseEntry,
     source: commit
       ? pinSpecifier(specifier, commit)
       : stripPinnedRef(specifier),
   };
-  if (!isEnabled(manifest, installedName)) {
+
+  if (type === "skill" && !isEnabled(manifest, installedName)) {
     log.warn(
       `"${installedName}" added but not in enabled whitelist -- won't install on sync`,
     );
   }
-  log.success(
-    `Added "${installedName}" -> ${getPrimarySkillOutputPath(manifest)}`,
-  );
+
+  log.success(`Added "${installedName}"`);
+  return installedName;
 }
 
 function toRelativePosix(projectRoot: string, value: string): string {
@@ -52,36 +69,52 @@ function addLocalSingle(
   sourcePath: string,
   manifest: Manifest,
   projectRoot: string,
-): void {
+  type: "skill" | "doc",
+): string {
   const installedName = install(
     sourcePath,
     sourcePath,
-    manifest.skills.outputPaths,
+    type === "skill" ? manifest.skillOutputPaths : [],
     {
-      preservePaths: getPreservedLocalSkillPaths(
-        projectRoot,
-        sourcePath,
-        sourcePath,
-        manifest.skills.outputPaths,
-      ),
+      preservePaths:
+        type === "skill"
+          ? getPreservedLocalSkillPaths(
+              projectRoot,
+              sourcePath,
+              sourcePath,
+              manifest.skillOutputPaths,
+            )
+          : [],
     },
   );
-  manifest.skills.entries[installedName] = {
+
+  const baseEntry: UnifiedEntry =
+    type === "skill"
+      ? { type: "skill", source: "" }
+      : {
+          type: "doc",
+          source: "",
+          targets: [getPrimarySkillOutputPath(manifest)],
+        };
+
+  manifest.entries[installedName] = {
+    ...baseEntry,
     source: toRelativePosix(projectRoot, sourcePath),
   };
-  if (!isEnabled(manifest, installedName)) {
+
+  if (type === "skill" && !isEnabled(manifest, installedName)) {
     log.warn(
       `"${installedName}" added but not in enabled whitelist -- won't install on sync`,
     );
   }
-  log.success(
-    `Added "${installedName}" -> ${getPrimarySkillOutputPath(manifest)}`,
-  );
+
+  log.success(`Added "${installedName}"`);
+  return installedName;
 }
 
 export async function addCommand(
   specifier: string,
-  opts: { name?: string },
+  opts: { name?: string; type?: "skill" | "doc" },
 ): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
@@ -91,24 +124,25 @@ export async function addCommand(
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
-  if (manifest.skills.outputPaths.length === 0) {
-    log.warn("No skill outputPaths configured in vulyk.json.");
-    log.dim(`  Example: "skills": { "outputPaths": ["skills"] }`);
+
+  if (!opts.type && manifest.skillOutputPaths.length === 0) {
+    log.warn("No skillOutputPaths configured in vulyk.json.");
+    log.dim(`  Example: "skillOutputPaths": [".agents/skills"]`);
     process.exit(1);
   }
+
+  const type = opts.type ?? "skill";
 
   if (!isRemoteSpecifier(specifier)) {
     const sourcePath = resolveSkillSourcePath(projectRoot, specifier);
     if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isDirectory()) {
-      log.error(
-        `Local skill source must be an existing directory: ${specifier}`,
-      );
+      log.error(`Local source must be an existing directory: ${specifier}`);
       process.exit(1);
     }
 
     const detection = detect(sourcePath);
     if (detection.type === "skill") {
-      addLocalSingle(sourcePath, manifest, projectRoot);
+      addLocalSingle(sourcePath, manifest, projectRoot, type);
     } else {
       const skills = detection.skills ?? [];
       if (skills.length === 0) {
@@ -117,7 +151,12 @@ export async function addCommand(
       }
       log.info(`Found ${String(skills.length)} skills: ${skills.join(", ")}`);
       for (const skillName of skills) {
-        addLocalSingle(path.join(sourcePath, skillName), manifest, projectRoot);
+        addLocalSingle(
+          path.join(sourcePath, skillName),
+          manifest,
+          projectRoot,
+          type,
+        );
       }
     }
 
@@ -149,7 +188,7 @@ export async function addCommand(
   const detection = detect(tmpDir);
 
   if (detection.type === "skill") {
-    addSingle(specifier, tmpDir, commit, manifest);
+    addSingle(specifier, tmpDir, commit, manifest, type);
   } else {
     const skills = detection.skills ?? [];
     if (skills.length === 0) {
@@ -160,7 +199,13 @@ export async function addCommand(
     log.info(`Found ${String(skills.length)} skills: ${skills.join(", ")}`);
     for (const skillName of skills) {
       const skillSpecifier = `${stripPinnedRef(specifier)}/${skillName}`;
-      addSingle(skillSpecifier, path.join(tmpDir, skillName), commit, manifest);
+      addSingle(
+        skillSpecifier,
+        path.join(tmpDir, skillName),
+        commit,
+        manifest,
+        type,
+      );
     }
   }
 

@@ -39,7 +39,9 @@ export function validateSkillsManifest(
   manifest: Manifest,
   projectRoot: string,
 ): void {
-  for (const [name, entry] of Object.entries(manifest.skills.entries)) {
+  for (const [name, entry] of Object.entries(manifest.entries)) {
+    if (entry.type !== "skill") continue;
+
     if (!isLocalSkillSource(projectRoot, entry.source)) {
       validateRemoteSkillSource(name, entry.source);
       continue;

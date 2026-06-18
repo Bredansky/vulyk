@@ -259,28 +259,35 @@ export function docsCommand(opts: { also?: string[] }): void {
   }
 
   validateDocsManifest(manifest, projectRoot);
-  const entries = Object.entries(manifest.docs.entries);
-  const currentSkillEntries = new Set(
-    Object.entries(manifest.skills.entries).flatMap(([name, entry]) => {
-      const preservedPaths = new Set(
-        getPreservedLocalSkillPaths(
-          projectRoot,
-          name,
-          entry.source,
-          manifest.skills.outputPaths,
-        ).map((value) => path.resolve(value)),
-      );
 
-      return manifest.skills.outputPaths
-        .filter((outputPath) => {
-          const candidatePath = path.resolve(projectRoot, outputPath, name);
-          return !preservedPaths.has(candidatePath);
-        })
-        .map((outputPath) => `${outputPath}/${name}/`);
-    }),
+  const docEntries = Object.entries(manifest.entries).filter(
+    ([, entry]) => entry.type === "doc",
   );
 
-  if (entries.length === 0) {
+  const currentSkillEntries = new Set(
+    Object.entries(manifest.entries)
+      .filter(([, entry]) => entry.type === "skill")
+      .flatMap(([name, entry]) => {
+        if (entry.type !== "skill") return [];
+        const preservedPaths = new Set(
+          getPreservedLocalSkillPaths(
+            projectRoot,
+            name,
+            entry.source,
+            manifest.skillOutputPaths,
+          ).map((value) => path.resolve(value)),
+        );
+
+        return manifest.skillOutputPaths
+          .filter((outputPath) => {
+            const candidatePath = path.resolve(projectRoot, outputPath, name);
+            return !preservedPaths.has(candidatePath);
+          })
+          .map((outputPath) => `${outputPath}/${name}/`);
+      }),
+  );
+
+  if (docEntries.length === 0) {
     cleanupStaleGeneratedDocs(projectRoot, []);
     updateRootGitignore([...currentSkillEntries].sort());
     log.warn("No docs entries configured in vulyk.json.");
@@ -291,7 +298,8 @@ export function docsCommand(opts: { also?: string[] }): void {
   const allKnownAliases = new Set<string>(opts.also ?? []);
   const managedExternalDocOutputPaths = new Set<string>();
 
-  for (const [name, entry] of entries) {
+  for (const [name, entry] of docEntries) {
+    if (entry.type !== "doc") continue;
     const rule = resolveRuleForEntry(manifest, projectRoot, entry);
     const sourcePath = isRemoteDocSource(projectRoot, entry.source)
       ? rule.config.outputPaths

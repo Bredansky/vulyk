@@ -155,8 +155,8 @@ function getMatchSortKey(
   );
 
   const bestTarget = matchingTargets.sort((left, right) => {
-    const leftNormalized = normalizeTarget(left.split("*")[0] ?? left);
-    const rightNormalized = normalizeTarget(right.split("*")[0] ?? right);
+    const leftNormalized = normalizeTarget(left.split("*")[0] ?? "");
+    const rightNormalized = normalizeTarget(right.split("*")[0] ?? "");
     return rightNormalized.length - leftNormalized.length;
   })[0];
 
@@ -204,7 +204,7 @@ export function resolveRuleForTarget(
   projectRoot: string,
   target: string,
 ): ResolvedDocRule {
-  const matches = Object.entries(manifest.docs.rules)
+  const matches = Object.entries(manifest.docRules)
     .filter(([, rule]) =>
       rule.match.some((pattern) => matchRulePattern(target, pattern)),
     )
@@ -289,9 +289,14 @@ export function validateDocsManifest(
   manifest: Manifest,
   projectRoot: string,
 ): void {
-  if (Object.keys(manifest.docs.entries).length === 0) return;
+  const docEntries = Object.entries(manifest.entries).filter(
+    ([, entry]) => entry.type === "doc",
+  );
 
-  for (const [name, entry] of Object.entries(manifest.docs.entries)) {
+  if (docEntries.length === 0) return;
+
+  for (const [name, entry] of docEntries) {
+    if (entry.type !== "doc") continue;
     if (entry.targets.length === 0) {
       throw new Error(`Doc entry "${name}" must declare at least one target.`);
     }
@@ -331,7 +336,9 @@ export function findDocsForFile(filePath: string): {
   validateDocsManifest(manifest, projectRoot);
   const matchedDocs: { doc: FileDocMatch; sortKey: MatchSortKey }[] = [];
 
-  for (const [name, entry] of Object.entries(manifest.docs.entries)) {
+  for (const [name, entry] of Object.entries(manifest.entries)) {
+    if (entry.type !== "doc") continue;
+
     if (
       !entry.targets.some((target) =>
         matchTarget(projectRoot, filePath, target),
@@ -400,7 +407,9 @@ export function findTargetsForDoc(docPath: string): {
     path.resolve(projectRoot, docPath),
   );
 
-  for (const [name, entry] of Object.entries(manifest.docs.entries)) {
+  for (const [name, entry] of Object.entries(manifest.entries)) {
+    if (entry.type !== "doc") continue;
+
     const filePathForDoc = getDocSourceFilePath(
       manifest,
       projectRoot,

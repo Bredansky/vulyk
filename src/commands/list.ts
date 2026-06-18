@@ -16,8 +16,13 @@ export function listCommand(): void {
   const projectRoot = path.dirname(manifestPath);
   validateSkillsManifest(manifest, projectRoot);
   validateDocsManifest(manifest, projectRoot);
-  const skills = Object.entries(manifest.skills.entries);
-  const docs = Object.entries(manifest.docs.entries);
+
+  const skills = Object.entries(manifest.entries).filter(
+    ([, entry]) => entry.type === "skill",
+  );
+  const docs = Object.entries(manifest.entries).filter(
+    ([, entry]) => entry.type === "doc",
+  );
 
   log.blue("\nSkills:");
   if (skills.length === 0) {
@@ -36,6 +41,7 @@ export function listCommand(): void {
   if (docs.length > 0) {
     log.blue("\nDocs:");
     for (const [name, entry] of docs) {
+      if (entry.type !== "doc") continue;
       log.print(
         `  ${color.green("+")} ${name} ${color.dim(isRemoteDocSource(projectRoot, entry.source) ? "external" : "local")} ${color.dim(entry.source)} ${color.dim(`-> ${entry.targets.join(", ")}`)}`,
       );
@@ -44,19 +50,19 @@ export function listCommand(): void {
 
   log.blue("\nPaths:");
   if (
-    manifest.skills.outputPaths.length === 0 &&
-    Object.keys(manifest.docs.rules).length === 0
+    manifest.skillOutputPaths.length === 0 &&
+    Object.keys(manifest.docRules).length === 0
   ) {
     log.dim("  none");
   } else {
-    if (manifest.skills.outputPaths.length > 0) {
+    if (manifest.skillOutputPaths.length > 0) {
       log.print(
-        `  ${color.dim("skill outputs:")} ${manifest.skills.outputPaths.join(", ")}`,
+        `  ${color.dim("skill outputs:")} ${manifest.skillOutputPaths.join(", ")}`,
       );
     }
-    if (Object.keys(manifest.docs.rules).length > 0) {
+    if (Object.keys(manifest.docRules).length > 0) {
       log.print(
-        `  ${color.dim("doc rules:")} ${Object.keys(manifest.docs.rules).join(", ")}`,
+        `  ${color.dim("doc rules:")} ${Object.keys(manifest.docRules).join(", ")}`,
       );
     }
   }
