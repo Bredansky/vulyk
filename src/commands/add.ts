@@ -95,19 +95,37 @@ function defaultGroupFor(
 }
 
 /**
+ * Build the inline entry config for a group-less entry. Mirrors the default
+ * group fields the user would have written explicitly, so a single entry
+ * can be self-contained without a `groups` block.
+ */
+function inlineEntryFor(shape: SourceShape): {
+  outputPaths: string[];
+  validate: { mustContain?: string[]; fileExtension?: string };
+  gitignoreGenerated: boolean;
+} {
+  return shape.isFile ? { ...DEFAULT_FILE_GROUP } : { ...DEFAULT_DIR_GROUP };
+}
+
+/**
  * Resolve a group for a source path, either by validate match, by hint, or
  * by auto-creating a default. Kind-agnostic — uses only the source's structure
  * and the group's `validate` block.
+ *
+ * Returns `undefined` when no group is needed: the manifest has no groups
+ * at all, so the entry should carry its config inline. The caller is
+ * responsible for filling in inline `outputPaths`/`validate`/`gitignoreGenerated`.
  */
 function resolveGroupForSource(
   manifest: Manifest,
   srcPath: string,
   shape: SourceShape,
   hint: string | undefined,
-): string {
+): string | undefined {
   const detected = detectGroup(manifest, srcPath, shape.isFile);
   if (detected) return detected;
   if (hint && manifest.groups[hint]) return hint;
+  if (Object.keys(manifest.groups).length === 0) return undefined;
   return defaultGroupFor(manifest, shape, srcPath);
 }
 
@@ -163,7 +181,7 @@ function addOneSource(
   // a collection of sub-entries — if so, the group is determined by what the
   // sub-entries would match, not by the dir itself.
   const group = resolveGroupForSource(manifest, sourcePath, shape, groupHint);
-  const resolvedGroup = manifest.groups[group];
+  const resolvedGroup = group ? manifest.groups[group] : undefined;
 
   if (shape.isDir) {
     // If the dir is empty or has no matching subdirs, treat as single entry.
@@ -181,14 +199,20 @@ function addOneSource(
           groupHint,
         );
         const entryName = sub;
+        const inline = subGroup
+          ? undefined
+          : inlineEntryFor({ isFile: false, isDir: true, exists: true });
         manifest.entries[entryName] = {
           source: sourceIsLocal
             ? path.relative(projectRoot, subPath).replace(/\\/g, "/")
             : specifierForEntry(sub),
           group: subGroup,
+          ...(inline ?? {}),
         };
         installEntry(manifest, entryName, subPath, entryName, sourceIsLocal);
-        log.success(`Added "${entryName}" to group "${subGroup}"`);
+        log.success(
+          `Added "${entryName}"${subGroup ? ` to group "${subGroup}"` : " (inline)"}`,
+        );
       }
       return;
     }
@@ -198,11 +222,13 @@ function addOneSource(
   const entryName = shape.isFile
     ? path.basename(sourcePath, path.extname(sourcePath))
     : path.basename(sourcePath);
+  const inline = group ? undefined : inlineEntryFor(shape);
   manifest.entries[entryName] = {
     source: sourceIsLocal
       ? path.relative(projectRoot, sourcePath).replace(/\\/g, "/")
       : specifierForEntry(),
     group,
+    ...(inline ?? {}),
   };
   const installName = installEntry(
     manifest,
@@ -211,7 +237,9 @@ function addOneSource(
     entryName,
     sourceIsLocal,
   );
-  log.success(`Added "${installName}" to group "${group}"`);
+  log.success(
+    `Added "${installName}"${group ? ` to group "${group}"` : " (inline)"}`,
+  );
   if (!isEnabled(manifest, installName)) {
     log.dim(`  (use \`vulyk enable ${installName}\` to install on agents)`);
   }

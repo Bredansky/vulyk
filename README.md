@@ -95,6 +95,8 @@ vulyk find-targets docs/external/project-structure.md
 
 ## :receipt: `vulyk.json`
 
+### Grouped form (shared config across entries)
+
 ```json
 {
   "groups": {
@@ -135,22 +137,44 @@ vulyk find-targets docs/external/project-structure.md
 }
 ```
 
-| Field                              | Description                                                                                                       |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `groups.<name>.outputPaths`        | Directories where this group's entries are installed                                                              |
-| `groups.<name>.validate`           | `mustContain` (required files) and/or `fileExtension` (expected ext) used by `vulyk add` to auto-detect the group |
-| `groups.<name>.rules`              | Optional per-group `[{ match, outputPaths }]` overrides that take precedence over the group default               |
-| `groups.<name>.gitignoreGenerated` | Whether to gitignore the group's installed files (per-group default; can be overridden per entry)                 |
-| `groups.<name>.enabled`            | Per-group opt-in whitelist. Empty array = all entries install (opt-out).                                          |
-| `groups.<name>.disabled`           | Per-group opt-out list. Always wins over `enabled`.                                                               |
-| `entries.<name>.source`            | Local repo-relative path or remote URL                                                                            |
-| `entries.<name>.group`             | Name of the group this entry belongs to                                                                           |
-| `entries.<name>.outputPaths`       | Optional per-entry override of the group's `outputPaths`                                                          |
-| `entries.<name>.targets`           | Optional list of dirs where `AGENTS.md` should be generated for this entry (doc entries only)                     |
-| `entries.<name>.description`       | Optional one-line summary, used in generated `AGENTS.md` sections                                                 |
-| `entries.<name>.also`              | Optional extra alias filenames (`@AGENTS.md` imports) generated in each target dir                                |
+### Inline form (single entry, no `groups` block)
 
-Resolution order for `outputPaths`: `entry.outputPaths` → `group.rules[match].outputPaths` (when source matches a rule) → `group.outputPaths` → `["docs/external"]`.
+For a single entry the full group config can be inlined directly on the entry — no shared group needed.
+
+```json
+{
+  "groups": {},
+  "entries": {
+    "my-skill": {
+      "source": "https://github.com/owner/skill/tree/<commit>/skill",
+      "outputPaths": [".agents/skills"],
+      "validate": { "mustContain": ["SKILL.md"] },
+      "gitignoreGenerated": true
+    }
+  }
+}
+```
+
+Entry-level fields override group-level fields. Resolution order: `entry.outputPaths` → `group.rules[match].outputPaths` → `group.outputPaths` → `["docs/external"]`. Same chain for `gitignoreGenerated` and (where applicable) `validate`.
+
+`vulyk add` writes the inline form automatically when the manifest has no `groups` configured — handy for new projects that only need one entry.
+
+| Field                               | Description                                                                                                       |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `groups.<name>.outputPaths`         | Directories where this group's entries are installed                                                              |
+| `groups.<name>.validate`            | `mustContain` (required files) and/or `fileExtension` (expected ext) used by `vulyk add` to auto-detect the group |
+| `groups.<name>.rules`               | Optional per-group `[{ match, outputPaths }]` overrides that take precedence over the group default               |
+| `groups.<name>.gitignoreGenerated`  | Whether to gitignore the group's installed files (per-group default; can be overridden per entry)                 |
+| `groups.<name>.enabled`             | Per-group opt-in whitelist. Empty array = all entries install (opt-out).                                          |
+| `groups.<name>.disabled`            | Per-group opt-out list. Always wins over `enabled`.                                                               |
+| `entries.<name>.source`             | Local repo-relative path or remote URL                                                                            |
+| `entries.<name>.group`              | Name of the group this entry belongs to (optional if the entry is self-grouped inline)                            |
+| `entries.<name>.outputPaths`        | Optional per-entry override of the group's `outputPaths`                                                          |
+| `entries.<name>.validate`           | Optional per-entry `validate` block (used by `vulyk add` for auto-detection; ignored at sync time)                |
+| `entries.<name>.gitignoreGenerated` | Optional per-entry override of the group's `gitignoreGenerated`                                                   |
+| `entries.<name>.targets`            | Optional list of dirs where `AGENTS.md` should be generated for this entry (doc entries only)                     |
+| `entries.<name>.description`        | Optional one-line summary, used in generated `AGENTS.md` sections                                                 |
+| `entries.<name>.also`               | Optional extra alias filenames (`@AGENTS.md` imports) generated in each target dir                                |
 
 ## :link: Specifier format
 

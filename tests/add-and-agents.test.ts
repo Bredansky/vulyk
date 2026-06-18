@@ -33,7 +33,7 @@ afterEach(() => {
   }
 });
 
-void test("addCommand installs a local skill and auto-creates a skills group", async () => {
+void test("addCommand installs a local skill and writes config inline when no groups are configured", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
@@ -58,12 +58,25 @@ void test("addCommand installs a local skill and auto-creates a skills group", a
     path.join(projectRoot, "vulyk.json"),
     "utf8",
   );
-  assert.match(manifestBody, /"groups":\s*\{[\s\S]*"skills"/);
+  // No `groups` block should be auto-created.
+  assert.match(manifestBody, /"groups":\s*\{\s*\}/);
+  // Entry carries its config inline.
   assert.match(
     manifestBody,
     /"alpha":\s*\{[\s\S]*"source":\s*"sources\/alpha"/,
   );
-  assert.match(manifestBody, /"group":\s*"skills"/);
+  assert.match(manifestBody, /"outputPaths":\s*\[[\s\S]*"\.agents\/skills"/);
+  assert.match(manifestBody, /"validate":\s*\{[\s\S]*"mustContain"/);
+  assert.match(manifestBody, /"gitignoreGenerated":\s*true/);
+
+  // The entry has no `group` reference; the inline config stands on its own.
+  const manifest = readManifest(path.join(projectRoot, "vulyk.json"));
+  const alpha = manifest.entries.alpha;
+  assert.ok(alpha);
+  assert.equal(alpha.group, undefined);
+  assert.deepEqual(alpha.outputPaths, [".agents/skills"]);
+  assert.deepEqual(alpha.validate, { mustContain: ["SKILL.md"] });
+  assert.equal(alpha.gitignoreGenerated, true);
 
   assert.equal(
     fs.existsSync(
@@ -77,7 +90,7 @@ void test("addCommand installs a local skill and auto-creates a skills group", a
   );
 });
 
-void test("addCommand expands a local collection into per-skill entries", async () => {
+void test("addCommand expands a local collection into per-skill entries with inline config", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
@@ -105,8 +118,11 @@ void test("addCommand expands a local collection into per-skill entries", async 
   const manifest = readManifest(path.join(projectRoot, "vulyk.json"));
   assert.ok(manifest.entries.one);
   assert.ok(manifest.entries.two);
-  assert.equal(manifest.entries.one.group, "skills");
-  assert.equal(manifest.entries.two.group, "skills");
+  // No shared group — each entry is self-grouped with inline defaults.
+  assert.equal(manifest.entries.one.group, undefined);
+  assert.equal(manifest.entries.two.group, undefined);
+  assert.deepEqual(manifest.entries.one.outputPaths, [".agents/skills"]);
+  assert.deepEqual(manifest.entries.two.outputPaths, [".agents/skills"]);
   assert.equal(
     fs.existsSync(path.join(projectRoot, ".agents/skills", "one", "SKILL.md")),
     true,
@@ -117,7 +133,7 @@ void test("addCommand expands a local collection into per-skill entries", async 
   );
 });
 
-void test("addCommand installs a local doc and auto-creates a docs group", async () => {
+void test("addCommand installs a local doc and writes config inline when no groups are configured", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
@@ -137,9 +153,12 @@ void test("addCommand installs a local doc and auto-creates a docs group", async
 
   const manifest = readManifest(path.join(projectRoot, "vulyk.json"));
   assert.ok(manifest.entries.guide);
-  assert.equal(manifest.entries.guide.group, "docs");
+  assert.equal(manifest.entries.guide.group, undefined);
+  assert.deepEqual(manifest.entries.guide.outputPaths, ["docs/external"]);
+  assert.deepEqual(manifest.entries.guide.validate, { fileExtension: ".md" });
+  assert.equal(manifest.entries.guide.gitignoreGenerated, true);
   assert.equal(
-    fs.existsSync(path.join(projectRoot, "docs/external/guide.md")),
+    fs.existsSync(path.join(projectRoot, "docs/external", "guide.md")),
     true,
   );
 });
@@ -183,6 +202,63 @@ void test("addCommand honors an existing group's outputPaths", async () => {
     ),
     true,
   );
+});
+
+void test("entry-level outputPaths overrides group outputPaths at sync time", async () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    groups: {
+      skills: {
+        outputPaths: ["managed-skills"],
+        validate: { mustContain: ["SKILL.md"] },
+        gitignoreGenerated: true,
+      },
+    },
+    entries: {
+      "inline-only": {
+        source: "sources/inline-only",
+        group: "skills",
+        // Per-entry override — beats the group's ["managed-skills"].
+        outputPaths: [".claude/skills"],
+        gitignoreGenerated: false,
+      },
+    },
+  });
+  writeFile(
+    path.join(projectRoot, "sources", "inline-only", "SKILL.md"),
+    "---\nname: inline-only\n---\n\n# Inline Only\n",
+  );
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    await agentsCommand();
+  } finally {
+    process.chdir(initialCwd);
+  }
+
+  // Group outputPaths ignored; entry's own used.
+  assert.equal(
+    fs.existsSync(
+      path.join(projectRoot, ".claude/skills", "inline-only", "SKILL.md"),
+    ),
+    true,
+  );
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, "managed-skills", "inline-only")),
+    false,
+  );
+  // Per-entry gitignore=false means the file is NOT added to .gitignore
+  // even though the group says true.
+  if (fs.existsSync(path.join(projectRoot, ".gitignore"))) {
+    const gitignore = fs.readFileSync(
+      path.join(projectRoot, ".gitignore"),
+      "utf8",
+    );
+    assert.doesNotMatch(gitignore, /^\.claude\/skills\/inline-only\//m);
+  }
 });
 
 void test("removeCommand deletes an entry from the manifest", () => {

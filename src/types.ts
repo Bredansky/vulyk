@@ -49,6 +49,16 @@ export const EntrySchema = z.object({
   also: z.array(z.string()).optional(),
   // Per-entry gitignore override.
   gitignoreGenerated: z.boolean().optional(),
+  // Per-entry validate block. Used by `vulyk add` to auto-detect this entry's
+  // own group-less classification; ignored at sync time. Lets a single entry
+  // carry its full group config inline without a `groups` block.
+  validate: z
+    .object({
+      mustContain: z.array(z.string()).optional(),
+      frontmatter: z.array(z.string()).optional(),
+      fileExtension: z.string().optional(),
+    })
+    .optional(),
   // Doc-style: which code paths this doc applies to.
   targets: z.array(z.string()).optional(),
   // Doc-style: human-readable description.
