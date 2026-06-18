@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Manifest } from "../types.js";
-import { resolvePath, readManifestFiles } from "./installer.js";
+import { readManifestFiles } from "./installer.js";
 import { isEnabled, resolveOutputPaths } from "./groups.js";
 import { log } from "./log.js";
 
@@ -53,7 +53,10 @@ function computeExpected(
     const sourceExt = isLocal ? path.extname(entry.source) : "";
     const sourceBase = isLocal ? path.basename(entry.source, sourceExt) : name;
     for (const outPath of outPaths) {
-      const resolved = resolvePath(outPath);
+      // Resolve relative to projectRoot, not CWD. vulyk commands may be
+      // invoked from any directory; the manifest's paths are always
+      // anchored at the manifest's location.
+      const resolved = path.resolve(projectRoot, outPath);
       if (sourceIsDir) {
         const dirPath = path.join(resolved, name);
         dirInstallDirs.add(path.resolve(dirPath));
@@ -139,6 +142,15 @@ export function cleanupStale(manifest: Manifest, projectRoot: string): void {
       // refresh its contents and overwrite the .vulyk manifest.
       continue;
     }
+
+    // Group install root: this dir's `.vulyk` marker is at a parent of
+    // the per-entry install dirs (e.g. `docs/external/.vulyk` parents
+    // `docs/external/<entry-name>/`). Leave it alone — the per-entry
+    // cleanup above handles stale children.
+    const isGroupInstallRoot = [...expected.dirInstallDirs].some((entryDir) =>
+      entryDir.startsWith(absDir + path.sep),
+    );
+    if (isGroupInstallRoot) continue;
 
     if (fileInstallOutputDirs.has(absDir)) {
       // File install output dir: read its .vulyk manifest and remove
