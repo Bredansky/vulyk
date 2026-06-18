@@ -1,11 +1,41 @@
 import { z } from "zod";
 
+// --- Pack mode: how to render an entry into an alias file (AGENTS.md, etc.) ---
+
+/**
+ * How a doc entry gets packed into an alias file (AGENTS.md, etc.):
+ *  - `summary` (default): full section with title + description + reference
+ *    link. Works for every tool that reads the alias file as plain markdown.
+ *  - `import`: one-line `@<path>` reference. Claude Code expands the imported
+ *    file's content into context at launch. Codex, OpenCode, and Hermes
+ *    render it as literal text and do not follow it — only use this when
+ *    the alias will only be read by Claude Code.
+ */
+export const PackModeSchema = z.enum(["summary", "import"]);
+
+export type PackMode = z.infer<typeof PackModeSchema>;
+
+/**
+ * An alias file can be declared as a plain string (default mode for its
+ * position — primary aliases default to `summary`, others to `import`) or
+ * as an object with an explicit `mode` override.
+ */
+export const AliasSchema = z.union([
+  z.string(),
+  z.object({
+    path: z.string(),
+    mode: PackModeSchema.optional(),
+  }),
+]);
+
+export type AliasSpec = z.infer<typeof AliasSchema>;
+
 // --- Doc rule (used inside groups.rules for target-glob output routing) ---
 
 export const DocRuleSchema = z.object({
   match: z.array(z.string()).min(1),
   outputPaths: z.array(z.string()).min(1).optional().default(["docs/external"]),
-  also: z.array(z.string()).default([]),
+  aliases: z.array(AliasSchema).default([]),
   gitIgnore: z.boolean().optional(),
 });
 
@@ -32,6 +62,11 @@ export const GroupSchema = z.object({
     .optional(),
   // Doc-style fallback rules (resolved by entry.targets glob match).
   rules: z.record(z.string(), DocRuleSchema).optional(),
+  // Default alias files to generate per target dir. Entry-level `aliases`
+  // overrides this list.
+  aliases: z.array(AliasSchema).optional(),
+  // Default pack mode for the primary alias (e.g., AGENTS.md).
+  pack: PackModeSchema.optional(),
 });
 
 export type Group = z.infer<typeof GroupSchema>;
@@ -45,8 +80,11 @@ export const EntrySchema = z.object({
   group: z.string().optional(),
   // Per-entry output path override (group-level used otherwise).
   outputPaths: z.array(z.string()).optional(),
-  // Per-entry alias override (e.g., extra AGENTS.md/CLAUDE.md files).
-  also: z.array(z.string()).optional(),
+  // Alias files to generate per target dir (e.g., AGENTS.md, CLAUDE.md).
+  // First entry is the "primary" — its mode defaults to `summary` (or the
+  // entry/group `pack` override). All others default to `import` so Claude
+  // Code picks them up via `@<primary>`.
+  aliases: z.array(AliasSchema).optional(),
   // Per-entry gitignore override.
   gitIgnore: z.boolean().optional(),
   // Per-entry validate block. Used by `vulyk add` to auto-detect this entry's
@@ -63,6 +101,9 @@ export const EntrySchema = z.object({
   targets: z.array(z.string()).optional(),
   // Doc-style: human-readable description.
   description: z.string().optional(),
+  // Per-entry pack mode override. Applies to the primary alias unless that
+  // alias declares its own mode.
+  pack: PackModeSchema.optional(),
 });
 
 export type Entry = z.infer<typeof EntrySchema>;
@@ -78,6 +119,8 @@ export const ManifestSchema = z.object({
   enabled: z.array(z.string()).optional(),
   disabled: z.array(z.string()).optional(),
   gitIgnore: z.boolean().optional(),
+  aliases: z.array(AliasSchema).optional(),
+  pack: PackModeSchema.optional(),
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;

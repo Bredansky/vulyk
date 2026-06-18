@@ -104,15 +104,21 @@ void test("resolveOutputPaths: entry > group > manifest", () => {
   assert.deepEqual(resolveOutputPaths(manifest, "c"), ["manifest-default"]);
 });
 
-void test("resolveAlso: falls back to entry.also only", () => {
+void test("resolveAlso: falls back to entry.aliases then group.aliases then manifest.aliases", () => {
   const manifest = makeManifest({
     entries: {
-      a: { source: "src/a", also: ["CLAUDE.md"] },
+      a: { source: "src/a", aliases: ["CLAUDE.md"] },
       b: { source: "src/b" },
+      c: { source: "src/c", group: "g1" },
     },
+    groups: {
+      g1: { aliases: ["GROUP.md"] },
+    },
+    aliases: ["MANIFEST.md"],
   });
   assert.deepEqual(resolveAlso(manifest, "a"), ["CLAUDE.md"]);
-  assert.deepEqual(resolveAlso(manifest, "b"), []);
+  assert.deepEqual(resolveAlso(manifest, "b"), ["MANIFEST.md"]);
+  assert.deepEqual(resolveAlso(manifest, "c"), ["GROUP.md"]);
 });
 
 void test("resolveGitignoreGenerated: entry > group > manifest, undefined if none set", () => {
