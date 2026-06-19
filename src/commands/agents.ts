@@ -14,14 +14,13 @@ import {
   isEnabled,
   resolveOutputPaths,
   resolveAlso,
-  resolvePack,
   resolveGitignoreGenerated,
 } from "../lib/groups.js";
 import { log } from "../lib/log.js";
 import { pinSpecifier } from "../lib/specifier.js";
 import { getDocSourcePath, getDocTitle } from "../lib/docs.js";
 import { cleanupStale } from "../lib/cleanup.js";
-import type { AliasSpec, Manifest, PackMode } from "../types.js";
+import type { Manifest } from "../types.js";
 
 function isLocalSource(projectRoot: string, source: string): boolean {
   return fs.existsSync(path.resolve(projectRoot, source));
@@ -49,7 +48,7 @@ async function syncEntry(
   name: string,
   projectRoot: string,
   manifest: Manifest,
-  cliOverrides: { pack?: PackMode; aliases?: string[] } = {},
+  cliOverrides: { aliases?: string[] } = {},
 ): Promise<SyncResult> {
   const entry = getEntry(manifest, name);
   if (!entry) return { contributions: [], secondaryWrites: [] };
@@ -119,38 +118,22 @@ async function syncEntry(
   );
 
   const secondaryWrites: { aliasPath: string; body: string }[] = [];
+  const aliases = cliOverrides.aliases ?? resolveAlso(manifest, name);
+  const primaryAlias = aliases[0];
   const docFilePath = getDocSourcePath(manifest, projectRoot, name);
-  if (docFilePath && fs.existsSync(docFilePath) && entry.targets) {
-    const docFile = getDocTitle(docFilePath, projectRoot);
-    const title = docFile.title || name;
-    const description = entry.description ?? "";
-    const docRelativePath = docFile.relativePath;
-    const rawAliases = cliOverrides.aliases ?? resolveAlso(manifest, name);
-    if (rawAliases.length > 0) {
-      const defaultPack: PackMode =
-        cliOverrides.pack ?? resolvePack(manifest, name) ?? "summary";
-      const aliases = rawAliases.map((spec, i) =>
-        normalizeAlias(spec, i === 0, defaultPack),
-      );
-      const primary = aliases[0];
-      if (primary) {
-        for (const target of entry.targets) {
-          const targetDir = getTargetDir(projectRoot, target);
-          for (let i = 1; i < aliases.length; i++) {
-            const alias = aliases[i];
-            if (!alias) continue;
-            const aliasPath = path.join(targetDir, alias.path);
-            const body = renderAliasBody(
-              alias.mode,
-              false,
-              primary.path,
-              docRelativePath,
-              title,
-              description,
-            );
-            secondaryWrites.push({ aliasPath, body });
-          }
-        }
+  if (
+    primaryAlias &&
+    docFilePath &&
+    fs.existsSync(docFilePath) &&
+    entry.targets
+  ) {
+    for (const target of entry.targets) {
+      const targetDir = getTargetDir(projectRoot, target);
+      for (let i = 1; i < aliases.length; i++) {
+        const alias = aliases[i];
+        if (!alias) continue;
+        const aliasPath = path.join(targetDir, alias);
+        secondaryWrites.push({ aliasPath, body: `@${primaryAlias}\n` });
       }
     }
   }
@@ -159,95 +142,46 @@ async function syncEntry(
 }
 
 /**
- * Render the body of the primary alias file (e.g., AGENTS.md). This is the
- * canonical, full-content form. Other alias files are derived from it via
- * `renderAliasBody` below.
+ * Render a primary alias file section for one entry. The section is
+ * `# Title\n\ndescription\n\nFull documentation: <path>` — readable by
+ * every tool (Claude Code follows the path, Codex/Hermes treat it as a
+ * literal reference they can `cat` or `rg` directly).
  */
-function renderSummaryBody(
+function renderPrimarySection(
   title: string,
   description: string,
   relativePath: string,
 ): string {
-  const lines: string[] = [];
-  if (title) lines.push(`# ${title}`);
-  if (description) lines.push(`\n${description}`);
-  lines.push(`\nFull documentation: ${relativePath}`);
-  return lines.join("");
-}
-
-/**
- * Render a single alias file's content based on its pack mode.
- *
- *  - `summary` → full section (default for the primary alias)
- *  - `import`  → `@<path>` one-liner. For non-primary aliases the path is
- *    the primary alias path (Claude Code chains imports). For a primary
- *    alias that opts into `import` mode, the path is the doc itself
- *    (no chaining — there's nothing to chain from).
- */
-function renderAliasBody(
-  mode: PackMode,
-  isPrimary: boolean,
-  primaryRelativePath: string,
-  docRelativePath: string,
-  title: string,
-  description: string,
-): string {
-  if (mode === "import") {
-    // Per Claude Code's @-import convention, direct imports must be bare
-    // lines (no header, no description) so they sit at the top of the
-    // shared AGENTS.md without a section frame. Non-primary aliases
-    // chain through the primary; primary aliases import the doc itself.
-    const target = isPrimary ? docRelativePath : primaryRelativePath;
-    return `@${target}\n`;
-  }
-  if (!isPrimary) {
-    throw new Error("`summary` mode is not valid for non-primary aliases");
-  }
-  return `${renderSummaryBody(title, description, docRelativePath)}\n`;
-}
-
-/**
- * Normalize an AliasSpec into `{ path, mode }` form.
- */
-function normalizeAlias(
-  spec: AliasSpec,
-  isPrimary: boolean,
-  defaultMode: PackMode,
-): { path: string; mode: PackMode } {
-  if (typeof spec === "string") {
-    return { path: spec, mode: isPrimary ? defaultMode : "import" };
-  }
-  return {
-    path: spec.path,
-    mode: spec.mode ?? (isPrimary ? defaultMode : "import"),
-  };
+  const blocks: string[] = [];
+  if (title) blocks.push(`# ${title}`);
+  if (description) blocks.push(description);
+  blocks.push(`Full documentation: ${relativePath}`);
+  return `${blocks.join("\n\n")}\n`;
 }
 
 /**
  * One entry's contribution to a primary alias file (e.g. AGENTS.md).
- * Multiple contributions to the same file are composed in two blocks:
- * import-mode lines first (bare `@<path>`), then summary-mode sections,
- * separated by `---`.
+ * Multiple contributions to the same file are composed in source order
+ * with `---` separators. Idempotent on exact file content.
  */
 interface PrimaryContribution {
   targetDir: string;
   primaryPath: string;
   primaryRelativePath: string;
-  mode: PackMode;
   body: string;
 }
 
 /**
  * Compute one entry's contribution to its primary alias file. Returns
- * null when the entry has nothing to contribute (no targets, no source,
- * or empty aliases).
+ * an empty array when the entry has nothing to contribute (no targets,
+ * no source, or empty aliases).
  */
 function computePrimaryContribution(
   name: string,
   entry: Manifest["entries"][string],
   projectRoot: string,
   manifest: Manifest,
-  cliOverrides: { pack?: PackMode; aliases?: string[] } = {},
+  cliOverrides: { aliases?: string[] } = {},
 ): PrimaryContribution[] {
   if (!entry.targets || entry.targets.length === 0) return [];
   const docFilePath = getDocSourcePath(manifest, projectRoot, name);
@@ -258,48 +192,34 @@ function computePrimaryContribution(
   const description = entry.description ?? "";
   const docRelativePath = docFile.relativePath;
 
-  const rawAliases = cliOverrides.aliases ?? resolveAlso(manifest, name);
-  if (rawAliases.length === 0) return [];
+  const aliases = cliOverrides.aliases ?? resolveAlso(manifest, name);
+  const primaryAlias = aliases[0];
+  if (!primaryAlias) return [];
 
-  const defaultPack: PackMode =
-    cliOverrides.pack ?? resolvePack(manifest, name) ?? "summary";
-  const aliases = rawAliases.map((spec, i) =>
-    normalizeAlias(spec, i === 0, defaultPack),
-  );
-  const primary = aliases[0];
-  if (!primary) return [];
-
-  const body = renderAliasBody(
-    primary.mode,
-    true,
-    primary.path,
-    docRelativePath,
-    title,
-    description,
-  );
+  const body = `${renderPrimarySection(title, description, docRelativePath)}\n`;
 
   return entry.targets.map((target) => {
     const targetDir = getTargetDir(projectRoot, target);
     return {
       targetDir,
-      primaryPath: path.join(targetDir, primary.path),
-      primaryRelativePath: primary.path,
-      mode: primary.mode,
+      primaryPath: path.join(targetDir, primaryAlias),
+      primaryRelativePath: primaryAlias,
       body,
     };
   });
 }
 
 /**
- * Group contributions by (targetDir, primaryPath) and write each shared
- * alias file: import-mode lines at the top, then summary-mode sections
- * separated by `---`. The write is idempotent on exact file content.
+ * Group primary contributions by their target file path and write each
+ * shared alias file as the source-order composition of its sections,
+ * separated by `---`. Idempotent on exact file content.
  */
 function writeComposedAliasFiles(
   contributions: PrimaryContribution[],
   secondaryWrites: { aliasPath: string; body: string }[],
 ): void {
-  // Group primary contributions by their target file path.
+  // Group primary contributions by their target file path, preserving
+  // insertion order so the output mirrors the manifest's entry order.
   const buckets = new Map<string, PrimaryContribution[]>();
   for (const c of contributions) {
     const list = buckets.get(c.primaryPath) ?? [];
@@ -310,17 +230,9 @@ function writeComposedAliasFiles(
   for (const [primaryPath, bucket] of buckets) {
     const targetDir = bucket[0]?.targetDir ?? path.dirname(primaryPath);
     fs.mkdirSync(targetDir, { recursive: true });
-    const imports = bucket
-      .filter((c) => c.mode === "import")
-      .map((c) => c.body.trim());
-    const summaries = bucket
-      .filter((c) => c.mode === "summary")
-      .map((c) => c.body.trim());
-
-    const blocks: string[] = [];
-    if (imports.length > 0) blocks.push(imports.join("\n"));
-    if (summaries.length > 0) blocks.push(summaries.join("\n\n---\n\n"));
-    const desired = blocks.length > 0 ? `${blocks.join("\n\n---\n\n")}\n` : "";
+    const sections = bucket.map((c) => c.body.trim());
+    const desired =
+      sections.length > 0 ? `${sections.join("\n\n---\n\n")}\n` : "";
 
     let existing = "";
     if (fs.existsSync(primaryPath)) {
@@ -344,7 +256,9 @@ function writeComposedAliasFiles(
  * the entry declares targets, refresh gitignore, prune stale managed files.
  */
 export async function agentsCommand(
-  cliOverrides: { pack?: PackMode; aliases?: string[] } = {},
+  cliOverrides: {
+    aliases?: string[];
+  } = {},
 ): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {

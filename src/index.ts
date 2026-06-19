@@ -10,15 +10,13 @@ import { updateCommand } from "./commands/update.js";
 import { diffCommand } from "./commands/diff.js";
 import { findDocsCommand } from "./commands/find-docs.js";
 import { findTargetsCommand } from "./commands/find-targets.js";
-import { log } from "./lib/log.js";
-import type { PackMode } from "./types.js";
 
 const program = new Command();
 
 program
   .name("vulyk")
   .description("Package manager for AI agent skills and tracked docs")
-  .version("0.9.5");
+  .version("0.9.6");
 
 program
   .command("init")
@@ -87,26 +85,11 @@ program
   .command("agents")
   .description("Sync all enabled entries to their output paths")
   .option(
-    "-p, --pack <mode>",
-    "pack mode for the primary alias: summary | import",
-  )
-  .option(
     "-a, --aliases <list>",
     "comma-separated alias files to generate per target dir (overrides entry.aliases)",
   )
-  .action(async (opts: { pack?: string; aliases?: string }) => {
-    const cliOverrides: { pack?: PackMode; aliases?: string[] } = {};
-    if (opts.pack) {
-      const valid: readonly PackMode[] = ["summary", "import"];
-      const matched = valid.find((v) => v === opts.pack);
-      if (!matched) {
-        log.error(
-          `Invalid --pack value: ${opts.pack}. Must be one of: ${valid.join(", ")}`,
-        );
-        process.exit(1);
-      }
-      cliOverrides.pack = matched;
-    }
+  .action(async (opts: { aliases?: string }) => {
+    const cliOverrides: { aliases?: string[] } = {};
     if (opts.aliases) {
       cliOverrides.aliases = opts.aliases
         .split(",")

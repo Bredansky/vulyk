@@ -1,32 +1,14 @@
 import { z } from "zod";
 
-// --- Pack mode: how to render an entry into an alias file (AGENTS.md, etc.) ---
+// --- Alias: a file to generate for a doc entry (e.g., AGENTS.md, CLAUDE.md) ---
 
 /**
- * How a doc entry gets packed into an alias file (AGENTS.md, etc.):
- *  - `summary` (default): full section with title + description + reference
- *    link. Works for every tool that reads the alias file as plain markdown.
- *  - `import`: one-line `@<path>` reference. Claude Code expands the imported
- *    file's content into context at launch. Codex, OpenCode, and Hermes
- *    render it as literal text and do not follow it — only use this when
- *    the alias will only be read by Claude Code.
+ * An alias is just a file name. The first alias of an entry is the
+ * "primary" (e.g., AGENTS.md) and gets a summary section written into it.
+ * All subsequent aliases are "secondary" and chain to the primary with
+ * a bare `@<primaryPath>` line.
  */
-export const PackModeSchema = z.enum(["summary", "import"]);
-
-export type PackMode = z.infer<typeof PackModeSchema>;
-
-/**
- * An alias file can be declared as a plain string (default mode for its
- * position — primary aliases default to `summary`, others to `import`) or
- * as an object with an explicit `mode` override.
- */
-export const AliasSchema = z.union([
-  z.string(),
-  z.object({
-    path: z.string(),
-    mode: PackModeSchema.optional(),
-  }),
-]);
+export const AliasSchema = z.string();
 
 export type AliasSpec = z.infer<typeof AliasSchema>;
 
@@ -65,8 +47,6 @@ export const GroupSchema = z.object({
   // Default alias files to generate per target dir. Entry-level `aliases`
   // overrides this list.
   aliases: z.array(AliasSchema).optional(),
-  // Default pack mode for the primary alias (e.g., AGENTS.md).
-  pack: PackModeSchema.optional(),
 });
 
 export type Group = z.infer<typeof GroupSchema>;
@@ -81,9 +61,8 @@ export const EntrySchema = z.object({
   // Per-entry output path override (group-level used otherwise).
   outputPaths: z.array(z.string()).optional(),
   // Alias files to generate per target dir (e.g., AGENTS.md, CLAUDE.md).
-  // First entry is the "primary" — its mode defaults to `summary` (or the
-  // entry/group `pack` override). All others default to `import` so Claude
-  // Code picks them up via `@<primary>`.
+  // First entry is the "primary" — it gets a summary section. All others
+  // chain to the primary with `@<primaryPath>`.
   aliases: z.array(AliasSchema).optional(),
   // Per-entry gitignore override.
   gitIgnore: z.boolean().optional(),
@@ -101,9 +80,6 @@ export const EntrySchema = z.object({
   targets: z.array(z.string()).optional(),
   // Doc-style: human-readable description.
   description: z.string().optional(),
-  // Per-entry pack mode override. Applies to the primary alias unless that
-  // alias declares its own mode.
-  pack: PackModeSchema.optional(),
 });
 
 export type Entry = z.infer<typeof EntrySchema>;
@@ -120,7 +96,6 @@ export const ManifestSchema = z.object({
   disabled: z.array(z.string()).optional(),
   gitIgnore: z.boolean().optional(),
   aliases: z.array(AliasSchema).optional(),
-  pack: PackModeSchema.optional(),
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;

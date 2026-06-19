@@ -1,13 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type {
-  Manifest,
-  Entry,
-  Group,
-  DocRule,
-  AliasSpec,
-  PackMode,
-} from "../types.js";
+import type { Manifest, Entry, Group, DocRule, AliasSpec } from "../types.js";
 
 // --- Lookup helpers ---
 
@@ -69,17 +62,6 @@ export function resolveAlso(
   // Default: an entry with `targets` always gets AGENTS.md unless it
   // explicitly opts out via `aliases: []`.
   return ["AGENTS.md"];
-}
-
-export function resolvePack(
-  manifest: Manifest,
-  entryName: string,
-): PackMode | undefined {
-  const entry = getEntry(manifest, entryName);
-  if (entry?.pack !== undefined) return entry.pack;
-  const group = resolveGroupForEntry(manifest, entryName);
-  if (group?.pack !== undefined) return group.pack;
-  return manifest.pack;
 }
 
 export function resolveGitignoreGenerated(
