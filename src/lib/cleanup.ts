@@ -109,6 +109,49 @@ function* findManagedDirs(
 }
 
 /**
+ * Read the `.vulyk` manifest in `absDir`, drop any DIRECT file no longer
+ * claimed by an enabled entry, and rewrite the manifest. Subdir paths
+ * (those containing a separator) are preserved — those describe child
+ * dir installs that have their own `.vulyk` manifests and are tracked
+ * separately.
+ */
+function cleanupFileInstallManifest(
+  absDir: string,
+  expected: ExpectedState,
+  projectRoot: string,
+): void {
+  const manifestFiles = readManifestFiles(absDir);
+  if (manifestFiles.size === 0) return;
+  const kept: string[] = [];
+  for (const file of manifestFiles) {
+    // Subdir entries in a parent .vulyk manifest describe child dir
+    // installs (e.g. `alpha/.vulyk`). Those have their own .vulyk
+    // manifest and are tracked via expected.dirInstallDirs — leave
+    // them alone.
+    if (file.includes("/") || file.includes(path.sep)) {
+      kept.push(file);
+      continue;
+    }
+    const filePath = path.join(absDir, file);
+    if (expected.expectedFiles.has(path.resolve(filePath))) {
+      kept.push(file);
+      continue;
+    }
+    removeFile(filePath, projectRoot);
+  }
+  const markerPath = path.join(absDir, ".vulyk");
+  if (kept.length === 0) {
+    if (fs.existsSync(markerPath)) fs.rmSync(markerPath, { force: true });
+  } else {
+    const body = `${kept
+      .sort()
+      .map((f) => `🍯 ${f}`)
+      .join("\n")}\n`;
+    fs.writeFileSync(markerPath, body);
+  }
+}
+
+/**
  * Single cleanup pass for all kinds (dir installs, file installs, AGENTS.md).
  *
  * The `.vulyk` manifest is the source of truth for what vulyk created. Files
@@ -121,6 +164,9 @@ function* findManagedDirs(
  *     - If it's a dir install in the expected set: the dir is fine, but
  *       the manifest inside should match the new install (we don't touch
  *       files inside because the next install() will refresh them).
+ *     - If it's a group install root: also prune any stale file-install
+ *       entries in its `.vulyk` manifest (e.g. local docs reclassified
+ *       into a group with no outputPaths).
  *     - If it's a file install output dir: read the manifest, remove
  *       listed files that are no longer expected.
  *     - If it's not claimed by any entry: remove the whole dir.
@@ -145,38 +191,19 @@ export function cleanupStale(manifest: Manifest, projectRoot: string): void {
 
     // Group install root: this dir's `.vulyk` marker is at a parent of
     // the per-entry install dirs (e.g. `docs/external/.vulyk` parents
-    // `docs/external/<entry-name>/`). Leave it alone — the per-entry
-    // cleanup above handles stale children.
+    // `docs/external/<entry-name>/`). It may ALSO hold stale file-install
+    // entries from before an entry moved to a no-outputPaths group —
+    // prune those via the shared file-install cleanup.
     const isGroupInstallRoot = [...expected.dirInstallDirs].some((entryDir) =>
       entryDir.startsWith(absDir + path.sep),
     );
-    if (isGroupInstallRoot) continue;
+    if (isGroupInstallRoot) {
+      cleanupFileInstallManifest(absDir, expected, projectRoot);
+      continue;
+    }
 
     if (fileInstallOutputDirs.has(absDir)) {
-      // File install output dir: read its .vulyk manifest and remove
-      // files that are no longer in the expected set.
-      const manifestFiles = readManifestFiles(absDir);
-      if (manifestFiles.size === 0) continue;
-      const kept: string[] = [];
-      for (const file of manifestFiles) {
-        const filePath = path.join(absDir, file);
-        if (expected.expectedFiles.has(path.resolve(filePath))) {
-          kept.push(file);
-          continue;
-        }
-        removeFile(filePath, projectRoot);
-      }
-      // Rewrite the manifest with only the still-claimed files
-      const markerPath = path.join(absDir, ".vulyk");
-      if (kept.length === 0) {
-        if (fs.existsSync(markerPath)) fs.rmSync(markerPath, { force: true });
-      } else {
-        const body = `${kept
-          .sort()
-          .map((f) => `🍯 ${f}`)
-          .join("\n")}\n`;
-        fs.writeFileSync(markerPath, body);
-      }
+      cleanupFileInstallManifest(absDir, expected, projectRoot);
       continue;
     }
 
