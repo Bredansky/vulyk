@@ -12,21 +12,12 @@ export function resolvePath(p: string): string {
 const MARKER = ".vulyk";
 const MARKER_PREFIX = "🍯 ";
 
-export interface InstallOptions {
-  preservePaths?: string[];
-  gitignore?: boolean;
-}
-
-/**
- * Read a `.vulyk` manifest from a directory. Returns the set of relative file
- * paths the previous install wrote there. Empty set if no manifest exists.
- */
 export function readManifestFiles(dir: string): Set<string> {
   const markerPath = path.join(dir, MARKER);
   if (!fs.existsSync(markerPath)) return new Set();
-  const body = fs.readFileSync(markerPath, "utf8");
+  const content = fs.readFileSync(markerPath, "utf8");
   const files = new Set<string>();
-  for (const line of body.split(/\r?\n/)) {
+  for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     if (trimmed === "🍯") continue; // legacy single-line marker
@@ -51,101 +42,151 @@ export function writeManifestFiles(dir: string, files: Iterable<string>): void {
   fs.writeFileSync(markerPath, body);
 }
 
-/**
- * Remove a `.vulyk` manifest from a directory.
- */
-export function clearManifest(dir: string): void {
-  const markerPath = path.join(dir, MARKER);
-  if (fs.existsSync(markerPath)) fs.rmSync(markerPath, { force: true });
-}
+const IGNORED_DIR_NAMES = new Set([
+  ".git",
+  "node_modules",
+  ".next",
+  ".turbo",
+  ".yarn",
+  "dist",
+  "build",
+  "coverage",
+]);
 
-/**
- * Recursively copy a directory, recording every file (relative to destRoot)
- * into the manifest accumulator. Skips the `.vulyk` marker.
- */
 function copyDirCollecting(
   src: string,
   dest: string,
-  destRoot: string,
+  base: string,
   manifest: Set<string>,
 ): void {
   fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (entry.name === MARKER) continue;
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    if (IGNORED_DIR_NAMES.has(entry.name)) continue;
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {
-      copyDirCollecting(srcPath, destPath, destRoot, manifest);
+      fs.mkdirSync(destPath, { recursive: true });
+      copyDirCollecting(srcPath, destPath, base, manifest);
     } else {
       fs.copyFileSync(srcPath, destPath);
-      manifest.add(path.relative(destRoot, destPath));
+      manifest.add(path.relative(base, destPath));
     }
   }
 }
 
-function readSkillName(srcDir: string): string | null {
-  const skillFile = path.join(srcDir, "SKILL.md");
-  if (!fs.existsSync(skillFile)) return null;
-  const content = fs.readFileSync(skillFile, "utf8");
-  const match = /^---\r?\n(?<fm>[\s\S]*?)\r?\n---/.exec(content);
-  if (!match) return null;
-  const nameLine = (match.groups?.fm ?? "")
-    .split("\n")
-    .find((l) => l.trimStart().startsWith("name:"));
-  return nameLine
-    ? (nameLine.split(":")[1] ?? "").trim().replace(/^["']|["']$/g, "")
-    : null;
-}
-
-function normalizeAbsolutePath(value: string): string {
-  return path.resolve(value);
-}
-
 function isPreservedPath(
-  candidate: string,
-  preservePaths: string[] | undefined,
+  dest: string,
+  preserve: string[] | undefined,
 ): boolean {
-  if (!preservePaths || preservePaths.length === 0) return false;
-  const normalizedCandidate = normalizeAbsolutePath(candidate);
-  return preservePaths.some(
-    (preservePath) =>
-      normalizeAbsolutePath(preservePath) === normalizedCandidate,
-  );
+  if (!preserve) return false;
+  return preserve.some((p) => path.resolve(p) === path.resolve(dest));
+}
+
+function resolveDirInstallName(packageName: string, _srcPath: string): string {
+  return packageName;
+}
+
+export interface InstallOptions {
+  gitignore?: boolean;
+  preservePaths?: string[];
+  /**
+   * When true, a single-file-in-dir source is treated as a folder
+   * (preserving the user's local structure). Set this for local sources
+   * where the folder shape is intentional. Remote sources fetched into a
+   * temp dir should leave it false (default) so a single-file dir is
+   * installed as a flat file.
+   */
+  preserveFolderForSingleFile?: boolean;
 }
 
 /**
- * Resolve the install name for a directory source.
- * Reads SKILL.md frontmatter `name` field, falling back to packageName.
+ * Classify the source: file install vs folder install, with the effective
+ * source path (for single-file-in-dir cases) and the file extension.
  */
-export function resolveDirInstallName(
-  packageName: string,
-  srcDir: string,
-): string {
-  return readSkillName(srcDir) ?? packageName;
+function classifySource(
+  srcPath: string,
+  preserveFolderForSingleFile: boolean,
+): {
+  isFileInstall: boolean;
+  effectiveSrc: string;
+  ext: string;
+} {
+  const stat = fs.statSync(srcPath);
+  if (stat.isFile()) {
+    return {
+      isFileInstall: true,
+      effectiveSrc: srcPath,
+      ext: path.extname(srcPath),
+    };
+  }
+  // It's a directory. If we should preserve the folder shape, treat as
+  // folder install regardless of contents.
+  if (preserveFolderForSingleFile) {
+    return { isFileInstall: false, effectiveSrc: srcPath, ext: "" };
+  }
+  // Otherwise, check if it's a single-file dir — the typical shape of a
+  // remote blob source fetched into a temp dir. Treat as file install.
+  const entries = fs.readdirSync(srcPath);
+  const fileNames = entries.filter((e) =>
+    fs.statSync(path.join(srcPath, e)).isFile(),
+  );
+  if (fileNames.length === 1) {
+    const singleFile = path.join(srcPath, fileNames[0]);
+    return {
+      isFileInstall: true,
+      effectiveSrc: singleFile,
+      ext: path.extname(singleFile),
+    };
+  }
+  return { isFileInstall: false, effectiveSrc: srcPath, ext: "" };
 }
 
 /**
- * Generic install — auto-detects directory vs file source.
- * Writes a `.vulyk` manifest in the install location listing every file
+ * Install an entry from a source path into one or more output paths.
+ *
+ * Source kinds:
+ *  - File: installs as a flat file at <output>/<name><ext>.
+ *  - Folder: copies the whole folder to <output>/<name>/.
+ *  - Single-file-in-dir (typical for fetched remote blobs): installs as a
+ *    flat file, using the single file's name and extension.
+ *
  * vulyk created, so cleanup can leave user-added files alone.
  */
 export function install(
   packageName: string,
   srcPath: string,
   outputPaths: string[],
-  opts?: InstallOptions,
+  opts: InstallOptions = {},
 ): string {
-  const stat = fs.statSync(srcPath);
-  const isDir = stat.isDirectory();
+  const { isFileInstall, effectiveSrc, ext } = classifySource(
+    srcPath,
+    opts.preserveFolderForSingleFile ?? false,
+  );
 
-  const installName = isDir
-    ? resolveDirInstallName(packageName, srcPath)
-    : packageName;
+  const installName = isFileInstall
+    ? packageName
+    : resolveDirInstallName(packageName, srcPath);
 
   for (const outputPath of outputPaths) {
     const resolved = resolvePath(outputPath);
 
-    if (isDir) {
+    if (isFileInstall) {
+      const dest = path.join(resolved, `${installName}${ext}`);
+      if (isPreservedPath(dest, opts.preservePaths)) continue;
+      const srcSameAsDest = path.resolve(effectiveSrc) === path.resolve(dest);
+      if (srcSameAsDest) continue;
+
+      fs.mkdirSync(resolved, { recursive: true });
+      if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
+      fs.copyFileSync(effectiveSrc, dest);
+
+      // Add to the shared manifest in the output dir, preserving any
+      // files from other entries that share the dir.
+      const manifest = readManifestFiles(resolved);
+      manifest.add(path.basename(dest));
+      writeManifestFiles(resolved, manifest);
+    } else {
       const dest = path.join(resolved, installName);
       if (isPreservedPath(dest, opts.preservePaths)) continue;
       const srcSameAsDest = path.resolve(srcPath) === path.resolve(dest);
@@ -160,22 +201,6 @@ export function install(
       const manifest = new Set<string>();
       copyDirCollecting(srcPath, dest, dest, manifest);
       writeManifestFiles(dest, manifest);
-    } else {
-      const ext = path.extname(srcPath);
-      const dest = path.join(resolved, `${installName}${ext}`);
-      if (isPreservedPath(dest, opts.preservePaths)) continue;
-      const srcSameAsDest = path.resolve(srcPath) === path.resolve(dest);
-      if (srcSameAsDest) continue;
-
-      fs.mkdirSync(resolved, { recursive: true });
-      if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
-      fs.copyFileSync(srcPath, dest);
-
-      // Add to the shared manifest in the output dir, preserving any
-      // files from other entries that share the dir.
-      const manifest = readManifestFiles(resolved);
-      manifest.add(path.basename(dest));
-      writeManifestFiles(resolved, manifest);
     }
   }
 
@@ -189,15 +214,17 @@ export function install(
     const entries = new Set(getRootGitignoreEntries());
     for (const outputPath of outputPaths) {
       const resolved = resolvePath(outputPath);
-      const dest = isDir
-        ? path.join(resolved, installName)
-        : path.join(resolved, `${installName}${path.extname(srcPath)}`);
+      const dest = isFileInstall
+        ? path.join(resolved, `${installName}${ext}`)
+        : path.join(resolved, installName);
       if (isPreservedPath(dest, opts.preservePaths)) continue;
-      const srcSameAsDest = path.resolve(srcPath) === path.resolve(dest);
+      const srcSameAsDest = isFileInstall
+        ? path.resolve(effectiveSrc) === path.resolve(dest)
+        : path.resolve(srcPath) === path.resolve(dest);
       if (srcSameAsDest) continue;
-      const relativeEntry = isDir
-        ? `${outputPath}/${installName}/`
-        : `${outputPath}/${installName}${path.extname(srcPath)}`;
+      const relativeEntry = isFileInstall
+        ? `${outputPath}/${installName}${ext}`
+        : `${outputPath}/${installName}/`;
       entries.add(relativeEntry);
     }
     updateRootGitignore([...entries].sort());
@@ -275,5 +302,3 @@ export function removeFromManifest(
 export function isManagedByVulyk(dir: string): boolean {
   return fs.existsSync(path.join(dir, MARKER));
 }
-
-export { MARKER };

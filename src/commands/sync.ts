@@ -55,6 +55,9 @@ async function syncEntry(
     install(name, sourcePath, outPaths, {
       gitignore,
       preservePaths: [sourcePath],
+      // Local sources: preserve the folder shape even if the directory
+      // contains a single file (the user chose that structure).
+      preserveFolderForSingleFile: true,
     });
   } else {
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);

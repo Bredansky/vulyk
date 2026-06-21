@@ -149,10 +149,14 @@ function installEntry(
   const gitignore = explicitGitignore;
   // For local sources, preserve the source path from being installed-over
   // and from being added to gitignore (it'd be gitignoring a real project file).
+  // Also preserve the folder shape: a local source like `sources/alpha/` with
+  // a single file inside is the user's intentional layout, not a remote-blob
+  // temp dir.
   const preservePaths = sourceIsLocal ? [srcPath] : undefined;
   const installName = install(packageName, srcPath, outputPaths, {
     gitignore,
     preservePaths,
+    preserveFolderForSingleFile: sourceIsLocal,
   });
   return installName;
 }
