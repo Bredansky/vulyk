@@ -10,6 +10,7 @@ import {
   resolveOutputPaths,
   resolveGitignoreGenerated,
 } from "../lib/groups.js";
+import { refreshGitignore } from "../lib/gitignore.js";
 import { log } from "../lib/log.js";
 import { pinSpecifier } from "../lib/specifier.js";
 import { cleanupStale } from "../lib/cleanup.js";
@@ -114,5 +115,12 @@ export async function syncCommand(): Promise<void> {
   }
 
   if (changed) writeManifest(manifestPath, manifest);
+
+  // Refresh the gitignore block to match the current state of the file
+  // system. The per-install updates add new entries but never remove
+  // stale ones (e.g. a previous folder install that's now a flat file),
+  // so the block accumulates garbage across syncs.
+  refreshGitignore(manifest, projectRoot);
+
   log.success("\nSync complete");
 }
