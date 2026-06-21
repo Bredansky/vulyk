@@ -33,6 +33,8 @@ export const GroupSchema = z.object({
   // Explicit opt-out; beats `enabled`.
   disabled: z.array(z.string()).optional(),
   // Whether installed files should be added to .gitignore.
+  // `undefined` means "not opted in" — install() will not gitignore
+  // anything unless the resolved value is `true`.
   gitIgnore: z.boolean().optional(),
   // Validation rules — used by `vulyk add` to auto-detect group.
   validate: z
@@ -64,7 +66,7 @@ export const EntrySchema = z.object({
   // First entry is the "primary" — it gets a summary section. All others
   // chain to the primary with `@<primaryPath>`.
   agents: z.array(AgentSchema).optional(),
-  // Per-entry gitignore override.
+  // Per-entry gitignore override. `undefined` = inherit from group/manifest.
   gitIgnore: z.boolean().optional(),
   // Per-entry validate block. Used by `vulyk add` to auto-detect this entry's
   // own group-less classification; ignored at sync time. Lets a single entry
@@ -94,6 +96,8 @@ export const ManifestSchema = z.object({
   outputPaths: z.array(z.string()).optional(),
   enabled: z.array(z.string()).optional(),
   disabled: z.array(z.string()).optional(),
+  // Default: undefined = "not opted in" (install() does not gitignore
+  // unless resolved value is `true`).
   gitIgnore: z.boolean().optional(),
   agents: z.array(AgentSchema).optional(),
 });

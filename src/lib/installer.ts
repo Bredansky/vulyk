@@ -147,7 +147,7 @@ export function install(
 
     if (isDir) {
       const dest = path.join(resolved, installName);
-      if (isPreservedPath(dest, opts?.preservePaths)) continue;
+      if (isPreservedPath(dest, opts.preservePaths)) continue;
       const srcSameAsDest = path.resolve(srcPath) === path.resolve(dest);
       if (srcSameAsDest) continue;
 
@@ -163,7 +163,7 @@ export function install(
     } else {
       const ext = path.extname(srcPath);
       const dest = path.join(resolved, `${installName}${ext}`);
-      if (isPreservedPath(dest, opts?.preservePaths)) continue;
+      if (isPreservedPath(dest, opts.preservePaths)) continue;
       const srcSameAsDest = path.resolve(srcPath) === path.resolve(dest);
       if (srcSameAsDest) continue;
 
@@ -180,24 +180,21 @@ export function install(
   }
 
   // Gitignore handling.
-  // - If the manifest explicitly set gitIgnore, use it.
-  // - Otherwise default to a per-path heuristic: gitignore a path unless
-  //   the install location is the same as the source (i.e. a local source
-  //   that lives at the same path as one of its declared output paths —
-  //   we don't want to gitignore the user's own source code).
-  if (opts?.gitignore !== false) {
+  // - If the manifest explicitly opted in via `gitIgnore: true`, add the
+  //   install paths to the root .gitignore.
+  // - Always skip paths where the source and destination resolve to the
+  //   same location: those are local files vulyk is "tracking in place",
+  //   and the user's own source code should never be gitignored.
+  if (opts.gitignore === true) {
     const entries = new Set(getRootGitignoreEntries());
     for (const outputPath of outputPaths) {
       const resolved = resolvePath(outputPath);
       const dest = isDir
         ? path.join(resolved, installName)
         : path.join(resolved, `${installName}${path.extname(srcPath)}`);
-      if (isPreservedPath(dest, opts?.preservePaths)) continue;
+      if (isPreservedPath(dest, opts.preservePaths)) continue;
       const srcSameAsDest = path.resolve(srcPath) === path.resolve(dest);
-      // If the caller passed gitignore=true explicitly, gitignore all paths.
-      // If it's undefined (default), skip srcSameAsDest paths but gitignore
-      // the rest.
-      if (srcSameAsDest && opts?.gitignore === undefined) continue;
+      if (srcSameAsDest) continue;
       const relativeEntry = isDir
         ? `${outputPath}/${installName}/`
         : `${outputPath}/${installName}${path.extname(srcPath)}`;

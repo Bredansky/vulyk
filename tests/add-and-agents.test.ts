@@ -539,8 +539,10 @@ void test("syncCommand does not gitignore local sources that share a managed out
       skills: {
         outputPaths: ["skills", "managed-skills"],
         validate: { mustContain: ["SKILL.md"] },
-        // No gitIgnore here — defaults apply per source:
-        // local source path is left alone, remote copy is gitignored.
+        // Explicit opt-in to gitignore. Local source at the same path
+        // is excluded via the srcSameAsDest heuristic; the remote-style
+        // copy at managed-skills/alpha/ is gitignored.
+        gitIgnore: true,
       },
     },
     entries: {
