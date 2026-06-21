@@ -73,18 +73,19 @@ Shows what would change if you ran `update`.
 
 Updates remote git-backed entries to the latest commit reachable from their configured ref. Local entries are refreshed from disk. On success, remote sources are repinned in `vulyk.json`.
 
+### `vulyk sync`
+
+Installs every enabled entry from its source into the configured output paths, refreshes gitignore, and prunes stale managed files. This is the actual `npm install` for your manifest — it does NOT generate AGENTS.md/CLAUDE.md files. Run `vulyk agents` after (or instead) for that.
+
 ### `vulyk agents`
 
-The `npm install` for this manifest. For every enabled entry: install from source, generate alias files (AGENTS.md by default, plus any configured aliases) in the entry's target dirs, refresh gitignore. Prunes any file in a `.vulyk` manifest that's no longer claimed by an active entry.
+Generates AGENTS.md/CLAUDE.md files for every enabled entry that declares `targets`. Does NOT install from sources — run `vulyk sync` first if your entries are remote.
 
 **Flags:**
 
-- `--aliases <list>` — comma-separated alias file list (overrides per-entry `aliases` for this run)
+- `--agents <list>` — comma-separated agent file names (overrides per-entry `agents` for this run)
 
-**Pack modes** (per-alias `mode`, or `entry.pack` / `group.pack` for the primary default):
-
-- `summary` (default for the primary alias) — full section: title + description + `Full documentation: <path>`. Works for every tool that reads the alias as plain markdown.
-- `import` (default for non-primary aliases) — one-line `@<path>` reference. Claude Code expands the imported file's content into context at launch. Codex, OpenCode, and Hermes render it as literal text and do not follow it — only use this when the alias will only be read by Claude Code.
+The first agent in the list is the **primary** — it gets a full `# Title` + description + `Full documentation: <path>` section. All subsequent agents are **secondary** and chain to the primary with a bare `@<primaryPath>` line — useful when CLAUDE.md should just `@import AGENTS.md`.
 
 The import is straight `@<path>` text — no framing, no separators. See the [Claude Code memory docs](https://docs.claude.com/en/docs/claude-code/memory) for the import behavior.
 
@@ -170,23 +171,22 @@ Entry-level fields override group-level fields. Resolution order: `entry.outputP
 
 `vulyk add` writes the inline form automatically when the manifest has no `groups` configured — handy for new projects that only need one entry.
 
-| Field                        | Description                                                                                                           |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `groups.<name>.outputPaths`  | Directories where this group's entries are installed                                                                  |
-| `groups.<name>.validate`     | `mustContain` (required files) and/or `fileExtension` (expected ext) used by `vulyk add` to auto-detect the group     |
-| `groups.<name>.rules`        | Optional per-group `[{ match, outputPaths }]` overrides that take precedence over the group default                   |
-| `groups.<name>.gitIgnore`    | Whether to gitignore the group's installed files (per-group default; can be overridden per entry)                     |
-| `groups.<name>.enabled`      | Per-group opt-in whitelist. Empty array = all entries install (opt-out).                                              |
-| `groups.<name>.disabled`     | Per-group opt-out list. Always wins over `enabled`.                                                                   |
-| `entries.<name>.source`      | Local repo-relative path or remote URL                                                                                |
-| `entries.<name>.group`       | Name of the group this entry belongs to (optional if the entry is self-grouped inline)                                |
-| `entries.<name>.outputPaths` | Optional per-entry override of the group's `outputPaths`                                                              |
-| `entries.<name>.validate`    | Optional per-entry `validate` block (used by `vulyk add` for auto-detection; ignored at sync time)                    |
-| `entries.<name>.gitIgnore`   | Optional per-entry override of the group's `gitIgnore`                                                                |
-| `entries.<name>.targets`     | Optional list of dirs where alias files should be generated for this entry (doc entries only)                         |
-| `entries.<name>.description` | Optional one-line summary, used in generated `AGENTS.md` sections                                                     |
-| `entries.<name>.pack`        | Pack mode for the primary alias: `summary` (default) or `import`                                                      |
-| `entries.<name>.aliases`     | Alias files to generate in each target dir. Each entry is a string (file path) or `{ path, mode }` for per-alias mode |
+| Field                        | Description                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `groups.<name>.outputPaths`  | Directories where this group's entries are installed                                                                      |
+| `groups.<name>.validate`     | `mustContain` (required files) and/or `fileExtension` (expected ext) used by `vulyk add` to auto-detect the group         |
+| `groups.<name>.rules`        | Optional per-group `[{ match, outputPaths }]` overrides that take precedence over the group default                       |
+| `groups.<name>.gitIgnore`    | Whether to gitignore the group's installed files (per-group default; can be overridden per entry)                         |
+| `groups.<name>.enabled`      | Per-group opt-in whitelist. Empty array = all entries install (opt-out).                                                  |
+| `groups.<name>.disabled`     | Per-group opt-out list. Always wins over `enabled`.                                                                       |
+| `entries.<name>.source`      | Local repo-relative path or remote URL                                                                                    |
+| `entries.<name>.group`       | Name of the group this entry belongs to (optional if the entry is self-grouped inline)                                    |
+| `entries.<name>.outputPaths` | Optional per-entry override of the group's `outputPaths`                                                                  |
+| `entries.<name>.validate`    | Optional per-entry `validate` block (used by `vulyk add` for auto-detection; ignored at sync time)                        |
+| `entries.<name>.gitIgnore`   | Optional per-entry override of the group's `gitIgnore`                                                                    |
+| `entries.<name>.targets`     | Optional list of dirs where agent files should be generated for this entry (doc entries only)                             |
+| `entries.<name>.description` | Optional one-line summary, used in generated `AGENTS.md` sections                                                         |
+| `entries.<name>.agents`      | Agent files to generate in each target dir (default: `["AGENTS.md"]`). First entry is primary; rest chain via `@primary`. |
 
 ## :link: Specifier format
 
@@ -204,10 +204,10 @@ GitHub-backed remote sources in `vulyk.json` must use commit-pinned `blob` or `t
 ## :broom: How managed files work
 
 - Every vulyk-managed location has a `.vulyk` manifest listing exactly the files vulyk created there. The manifest is the source of truth for cleanup.
-- **Cleanup is conservative.** `vulyk agents` only removes files that are listed in a `.vulyk` manifest AND no longer claimed by an enabled entry. Files you put in an output path yourself are never touched, even if they have a `.md` extension.
+- **Cleanup is conservative.** `vulyk sync` only removes files that are listed in a `.vulyk` manifest AND no longer claimed by an enabled entry. Files you put in an output path yourself are never touched, even if they have a `.md` extension.
 - **The root `.gitignore`** is updated with paths to vulyk-managed copies that aren't part of your own source tree. A local source path is never gitignored — even if it happens to share a path with one of the configured `outputPaths`.
-- **Alias file generation.** For every doc entry with a `targets` list, the primary alias (default `AGENTS.md`) is generated in each target dir. Additional aliases declared via `entry.aliases` (e.g. `CLAUDE.md`) are also written per the configured pack mode. See the `vulyk agents` flags above for mode details.
-- **Idempotency.** `vulyk agents` can be run repeatedly. It only writes files that changed; it does not duplicate `AGENTS.md` sections.
+- **Agent file generation.** For every doc entry with a `targets` list, the primary agent file (default `AGENTS.md`) is generated in each target dir. Additional agents declared via `entry.agents` (e.g. `CLAUDE.md`) chain to the primary with `@AGENTS.md`. See the `vulyk agents` flags above for details.
+- **Idempotency.** `vulyk sync` and `vulyk agents` can both be run repeatedly. Each only writes files that changed; `agents` does not duplicate `AGENTS.md` sections.
 
 ## :page_facing_up: License
 

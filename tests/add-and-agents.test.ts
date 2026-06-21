@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { addCommand } from "../src/commands/add.js";
 import { removeCommand } from "../src/commands/remove.js";
 import { agentsCommand } from "../src/commands/agents.js";
+import { syncCommand } from "../src/commands/sync.js";
 import { readManifest } from "../src/lib/manifest.js";
 
 function makeTempProject(): string {
@@ -204,7 +205,7 @@ void test("addCommand honors an existing group's outputPaths", async () => {
   );
 });
 
-void test("entry-level outputPaths overrides group outputPaths at sync time", async () => {
+void test("syncCommand: entry-level outputPaths overrides group outputPaths", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
@@ -234,7 +235,7 @@ void test("entry-level outputPaths overrides group outputPaths at sync time", as
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await agentsCommand();
+    await syncCommand();
   } finally {
     process.chdir(initialCwd);
   }
@@ -304,7 +305,7 @@ void test("removeCommand deletes an entry from the manifest", () => {
   assert.doesNotMatch(manifestBody, /"alpha":/);
 });
 
-void test("agentsCommand installs local skills from disk and supports update", async () => {
+void test("syncCommand installs local skills from disk and supports update", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
@@ -327,7 +328,7 @@ void test("agentsCommand installs local skills from disk and supports update", a
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await agentsCommand();
+    await syncCommand();
     const installedPath = path.join(
       projectRoot,
       "managed-skills",
@@ -341,14 +342,14 @@ void test("agentsCommand installs local skills from disk and supports update", a
       "---\nname: alpha\n---\n\n# Alpha v2\n",
     );
 
-    await agentsCommand();
+    await syncCommand();
     assert.match(fs.readFileSync(installedPath, "utf8"), /Alpha v2/);
   } finally {
     process.chdir(initialCwd);
   }
 });
 
-void test("agentsCommand prunes stale managed skill dirs not in any entry's output paths", async () => {
+void test("syncCommand prunes stale managed skill dirs not in any entry's output paths", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
@@ -387,7 +388,7 @@ void test("agentsCommand prunes stale managed skill dirs not in any entry's outp
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await agentsCommand();
+    await syncCommand();
 
     assert.equal(
       fs.existsSync(path.join(projectRoot, "managed-skills", "alpha")),
@@ -406,13 +407,13 @@ void test("agentsCommand prunes stale managed skill dirs not in any entry's outp
   }
 });
 
-void test("agentsCommand prunes stale external doc files in shared output paths", async () => {
+void test("syncCommand prunes stale external doc files in shared output paths", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
   // Two doc entries that share the docs/external output path, with
   // a previously installed .vulyk manifest listing both. After one
-  // entry is removed from the manifest, agentsCommand should remove
+  // entry is removed from the manifest, syncCommand should remove
   // the corresponding file from the output path (because it's still
   // in the manifest but no longer claimed by any active entry).
   writeFile(
@@ -454,7 +455,7 @@ void test("agentsCommand prunes stale external doc files in shared output paths"
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await agentsCommand();
+    await syncCommand();
     // The active entry's file is preserved
     assert.equal(
       fs.existsSync(
@@ -474,7 +475,7 @@ void test("agentsCommand prunes stale external doc files in shared output paths"
   }
 });
 
-void test("agentsCommand leaves user-added files in an output path alone", async () => {
+void test("agentsCommand leaves user-added files in an output path alone", () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
@@ -512,7 +513,7 @@ void test("agentsCommand leaves user-added files in an output path alone", async
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await agentsCommand();
+    agentsCommand();
     assert.equal(
       fs.existsSync(path.join(projectRoot, "docs/external/my-notes.md")),
       true,
@@ -522,7 +523,7 @@ void test("agentsCommand leaves user-added files in an output path alone", async
   }
 });
 
-void test("agentsCommand does not gitignore local sources that share a managed output path", async () => {
+void test("syncCommand does not gitignore local sources that share a managed output path", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
@@ -554,7 +555,7 @@ void test("agentsCommand does not gitignore local sources that share a managed o
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await agentsCommand();
+    await syncCommand();
 
     // Local source preserved
     assert.equal(

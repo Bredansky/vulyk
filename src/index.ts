@@ -5,6 +5,7 @@ import { removeCommand } from "./commands/remove.js";
 import { enableCommand } from "./commands/enable.js";
 import { disableCommand } from "./commands/disable.js";
 import { listCommand } from "./commands/list.js";
+import { syncCommand } from "./commands/sync.js";
 import { agentsCommand } from "./commands/agents.js";
 import { updateCommand } from "./commands/update.js";
 import { diffCommand } from "./commands/diff.js";
@@ -16,7 +17,7 @@ const program = new Command();
 program
   .name("vulyk")
   .description("Package manager for AI agent skills and tracked docs")
-  .version("0.9.6");
+  .version("0.10.0");
 
 program
   .command("init")
@@ -82,21 +83,30 @@ program
   .action(findTargetsCommand);
 
 program
+  .command("sync")
+  .description("Install all enabled entries from their sources to output paths")
+  .action(async () => {
+    await syncCommand();
+  });
+
+program
   .command("agents")
-  .description("Sync all enabled entries to their output paths")
-  .option(
-    "-a, --aliases <list>",
-    "comma-separated alias files to generate per target dir (overrides entry.aliases)",
+  .description(
+    "Generate AGENTS.md/CLAUDE.md files for entries with targets (run after `vulyk sync`)",
   )
-  .action(async (opts: { aliases?: string }) => {
-    const cliOverrides: { aliases?: string[] } = {};
-    if (opts.aliases) {
-      cliOverrides.aliases = opts.aliases
+  .option(
+    "-a, --agents <list>",
+    "comma-separated agent file names (overrides entry.agents for this run)",
+  )
+  .action((opts: { agents?: string }) => {
+    const cliOverrides: { agents?: string[] } = {};
+    if (opts.agents) {
+      cliOverrides.agents = opts.agents
         .split(",")
         .map((a) => a.trim())
         .filter(Boolean);
     }
-    await agentsCommand(cliOverrides);
+    agentsCommand(cliOverrides);
   });
 
 program.parse();

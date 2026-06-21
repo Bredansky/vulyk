@@ -1,23 +1,23 @@
 import { z } from "zod";
 
-// --- Alias: a file to generate for a doc entry (e.g., AGENTS.md, CLAUDE.md) ---
+// --- Agent file: a markdown file generated for a doc entry (e.g., AGENTS.md, CLAUDE.md) ---
 
 /**
- * An alias is just a file name. The first alias of an entry is the
+ * An agent file is just a file name. The first agent of an entry is the
  * "primary" (e.g., AGENTS.md) and gets a summary section written into it.
- * All subsequent aliases are "secondary" and chain to the primary with
+ * All subsequent agents are "secondary" and chain to the primary with
  * a bare `@<primaryPath>` line.
  */
-export const AliasSchema = z.string();
+export const AgentSchema = z.string();
 
-export type AliasSpec = z.infer<typeof AliasSchema>;
+export type AgentSpec = z.infer<typeof AgentSchema>;
 
 // --- Doc rule (used inside groups.rules for target-glob output routing) ---
 
 export const DocRuleSchema = z.object({
   match: z.array(z.string()).min(1),
   outputPaths: z.array(z.string()).min(1).optional().default(["docs/external"]),
-  aliases: z.array(AliasSchema).default([]),
+  agents: z.array(AgentSchema).default([]),
   gitIgnore: z.boolean().optional(),
 });
 
@@ -44,9 +44,9 @@ export const GroupSchema = z.object({
     .optional(),
   // Doc-style fallback rules (resolved by entry.targets glob match).
   rules: z.record(z.string(), DocRuleSchema).optional(),
-  // Default alias files to generate per target dir. Entry-level `aliases`
+  // Default agent files to generate per target dir. Entry-level `agents`
   // overrides this list.
-  aliases: z.array(AliasSchema).optional(),
+  agents: z.array(AgentSchema).optional(),
 });
 
 export type Group = z.infer<typeof GroupSchema>;
@@ -60,10 +60,10 @@ export const EntrySchema = z.object({
   group: z.string().optional(),
   // Per-entry output path override (group-level used otherwise).
   outputPaths: z.array(z.string()).optional(),
-  // Alias files to generate per target dir (e.g., AGENTS.md, CLAUDE.md).
+  // Agent files to generate per target dir (e.g., AGENTS.md, CLAUDE.md).
   // First entry is the "primary" — it gets a summary section. All others
   // chain to the primary with `@<primaryPath>`.
-  aliases: z.array(AliasSchema).optional(),
+  agents: z.array(AgentSchema).optional(),
   // Per-entry gitignore override.
   gitIgnore: z.boolean().optional(),
   // Per-entry validate block. Used by `vulyk add` to auto-detect this entry's
@@ -95,7 +95,7 @@ export const ManifestSchema = z.object({
   enabled: z.array(z.string()).optional(),
   disabled: z.array(z.string()).optional(),
   gitIgnore: z.boolean().optional(),
-  aliases: z.array(AliasSchema).optional(),
+  agents: z.array(AgentSchema).optional(),
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;

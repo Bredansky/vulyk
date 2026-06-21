@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 function makeTempProject(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-aliases-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-agents-"));
   createdDirs.push(dir);
   fs.mkdirSync(path.join(dir, "src-docs"), { recursive: true });
   fs.mkdirSync(path.join(dir, "src"), { recursive: true });
@@ -35,12 +35,13 @@ function writeJson(p: string, value: unknown): void {
   fs.writeFileSync(p, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-void test("agentsCommand: default primary alias is AGENTS.md with summary section", async () => {
-  // No `aliases` field anywhere — should fall back to the default
+void test("agentsCommand: default primary agent file is AGENTS.md with summary section", () => {
+  // No `agents` field anywhere — should fall back to the default
   // ["AGENTS.md"] with a summary section. Title and "Full documentation:"
   // link come from the source doc.
   const projectRoot = makeTempProject();
   const manifest: Manifest = {
+    groups: {},
     entries: {
       alpha: {
         source: "./src-docs/alpha.md",
@@ -55,7 +56,7 @@ void test("agentsCommand: default primary alias is AGENTS.md with summary sectio
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await agentsCommand();
+    agentsCommand();
   } finally {
     process.chdir(initialCwd);
   }
@@ -71,17 +72,18 @@ void test("agentsCommand: default primary alias is AGENTS.md with summary sectio
   assert.doesNotMatch(body.split("\n")[0] ?? "", /^@/);
 });
 
-void test("agentsCommand: secondary alias chains to primary with @<primaryPath>", async () => {
-  // The second entry in the aliases array is the secondary. It gets
+void test("agentsCommand: secondary agent chains to primary with @<primaryPath>", () => {
+  // The second entry in the agents array is the secondary. It gets
   // `@AGENTS.md` regardless of entry content.
   const projectRoot = makeTempProject();
   const manifest: Manifest = {
+    groups: {},
     entries: {
       alpha: {
         source: "./src-docs/alpha.md",
         outputPaths: ["./docs/installed"],
         targets: ["src"],
-        aliases: ["AGENTS.md", "CLAUDE.md"],
+        agents: ["AGENTS.md", "CLAUDE.md"],
       },
     },
   };
@@ -90,7 +92,7 @@ void test("agentsCommand: secondary alias chains to primary with @<primaryPath>"
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await agentsCommand();
+    agentsCommand();
   } finally {
     process.chdir(initialCwd);
   }
@@ -100,12 +102,13 @@ void test("agentsCommand: secondary alias chains to primary with @<primaryPath>"
   assert.equal(fs.readFileSync(claudePath, "utf8"), "@AGENTS.md\n");
 });
 
-void test("agentsCommand: shared AGENTS.md composes multiple sections in source order with ---", async () => {
+void test("agentsCommand: shared AGENTS.md composes multiple sections in source order with ---", () => {
   // Multiple entries → AGENTS.md is the source-order composition of
   // their summary sections, separated by `---`. No bare @-imports at
   // the top; the schema no longer supports that mode.
   const projectRoot = makeTempProject();
   const manifest: Manifest = {
+    groups: {},
     entries: {
       alpha: {
         source: "./src-docs/alpha.md",
@@ -124,7 +127,7 @@ void test("agentsCommand: shared AGENTS.md composes multiple sections in source 
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    await agentsCommand();
+    agentsCommand();
   } finally {
     process.chdir(initialCwd);
   }

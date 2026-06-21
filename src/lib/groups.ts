@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Manifest, Entry, Group, DocRule, AliasSpec } from "../types.js";
+import type { Manifest, Entry, Group, DocRule, AgentSpec } from "../types.js";
 
 // --- Lookup helpers ---
 
@@ -43,24 +43,24 @@ export function resolveOutputPaths(
   return manifest.outputPaths ?? [];
 }
 
-export function resolveAlso(
+export function resolveAgents(
   manifest: Manifest,
   entryName: string,
-): AliasSpec[] {
+): AgentSpec[] {
   const entry = getEntry(manifest, entryName);
   if (!entry) return [];
-  if (entry.aliases && entry.aliases.length > 0) {
-    return entry.aliases;
+  if (entry.agents && entry.agents.length > 0) {
+    return entry.agents;
   }
   const group = resolveGroupForEntry(manifest, entryName);
-  if (group?.aliases && group.aliases.length > 0) {
-    return group.aliases;
+  if (group?.agents && group.agents.length > 0) {
+    return group.agents;
   }
-  if (manifest.aliases && manifest.aliases.length > 0) {
-    return manifest.aliases;
+  if (manifest.agents && manifest.agents.length > 0) {
+    return manifest.agents;
   }
   // Default: an entry with `targets` always gets AGENTS.md unless it
-  // explicitly opts out via `aliases: []`.
+  // explicitly opts out via `agents: []`.
   return ["AGENTS.md"];
 }
 
@@ -191,7 +191,7 @@ export function resolveRuleForTarget(
     config: {
       match: [],
       outputPaths: ["docs/external"],
-      aliases: [],
+      agents: [],
       gitIgnore: true,
     },
   };

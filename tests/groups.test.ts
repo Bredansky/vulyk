@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   isEnabled,
   resolveOutputPaths,
-  resolveAlso,
+  resolveAgents,
   resolveGitignoreGenerated,
   setEnabled,
   entriesByGroup,
@@ -104,21 +104,21 @@ void test("resolveOutputPaths: entry > group > manifest", () => {
   assert.deepEqual(resolveOutputPaths(manifest, "c"), ["manifest-default"]);
 });
 
-void test("resolveAlso: falls back to entry.aliases then group.aliases then manifest.aliases", () => {
+void test("resolveAgents: falls back to entry.agents then group.agents then manifest.agents", () => {
   const manifest = makeManifest({
     entries: {
-      a: { source: "src/a", aliases: ["CLAUDE.md"] },
+      a: { source: "src/a", agents: ["CLAUDE.md"] },
       b: { source: "src/b" },
       c: { source: "src/c", group: "g1" },
     },
     groups: {
-      g1: { aliases: ["GROUP.md"] },
+      g1: { agents: ["GROUP.md"] },
     },
-    aliases: ["MANIFEST.md"],
+    agents: ["MANIFEST.md"],
   });
-  assert.deepEqual(resolveAlso(manifest, "a"), ["CLAUDE.md"]);
-  assert.deepEqual(resolveAlso(manifest, "b"), ["MANIFEST.md"]);
-  assert.deepEqual(resolveAlso(manifest, "c"), ["GROUP.md"]);
+  assert.deepEqual(resolveAgents(manifest, "a"), ["CLAUDE.md"]);
+  assert.deepEqual(resolveAgents(manifest, "b"), ["MANIFEST.md"]);
+  assert.deepEqual(resolveAgents(manifest, "c"), ["GROUP.md"]);
 });
 
 void test("resolveGitignoreGenerated: entry > group > manifest, undefined if none set", () => {
