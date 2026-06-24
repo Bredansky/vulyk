@@ -150,3 +150,58 @@ void test("applyCleanupDelta does not delete a path that's in both prev and curr
 
   assert.equal(fs.existsSync(file), true);
 });
+void test("parseLockObject accepts a v1 lockfile with the expected shape", () => {
+  const result = parseLockObject({
+    version: 1,
+    syncPaths: ["a", "b"],
+    agentPaths: ["x AGENTS.md"],
+  });
+  assert.deepEqual(result, {
+    version: 1,
+    syncPaths: ["a", "b"],
+    agentPaths: ["x AGENTS.md"],
+  });
+});
+
+void test("parseLockObject returns null when the lockfile version is not 1 (forward-compat gate)", () => {
+  // Future v2 lockfile: gate refuses so readState falls through to migration.
+  assert.equal(
+    parseLockObject({ version: 2, syncPaths: ["a"], agentPaths: [] }),
+    null,
+  );
+  // No version field at all: same gate.
+  assert.equal(parseLockObject({ syncPaths: ["a"], agentPaths: [] }), null);
+  // Wrong type for version: same gate.
+  assert.equal(
+    parseLockObject({ version: "1", syncPaths: ["a"], agentPaths: [] }),
+    null,
+  );
+  // v0 hypothetical: same gate.
+  assert.equal(
+    parseLockObject({ version: 0, syncPaths: ["a"], agentPaths: [] }),
+    null,
+  );
+});
+
+void test("readState falls through to legacy migration when the lockfile is at an unknown version", () => {
+  const dir = tmpRoot();
+  // Hand-write a v2 lockfile directly.
+  fs.writeFileSync(
+    path.join(dir, LOCK_FILENAME),
+    JSON.stringify({ version: 2, syncPaths: ["x"], agentPaths: [] }),
+  );
+  // No legacy markers exist, so migrateFromLegacyMarkers returns empty.
+  const r = readState(dir);
+  assert.deepEqual(r, { version: 1, syncPaths: [], agentPaths: [] });
+  // The v2 file is still on disk (we didn'''t overwrite it as part of the
+  // fallback path; only an explicit writeState rewrites the lockfile).
+  // Read-only by contract: readState never overwrites the lockfile;
+  // only writeState does. We assert the v2 marker survives by raw
+  // string content (avoids JSON.parse + any-typed assignment lint
+  // while still pinning "version":2 on disk).
+  const onDiskRaw = fs.readFileSync(path.join(dir, LOCK_FILENAME), "utf8");
+  assert.ok(
+    onDiskRaw.includes('"version":2'),
+    `lockfile preserved on disk as v2; raw=${JSON.stringify(onDiskRaw)}`,
+  );
+});

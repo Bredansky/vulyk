@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { log } from "./log.js";
 
 export const LOCK_FILENAME = "vulyk-lock.json";
 
@@ -50,7 +51,15 @@ export function parseLockObject(value: unknown): LockState | null {
   // single boundary at which JSON lands into LockState; everything after is
   // narrowing through isStringArray.
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- the one JSON->LockState boundary; `satisfies` was rejected because `unknown` lacks the `syncPaths`/`agentPaths` keys
-  const obj = value as { syncPaths?: unknown; agentPaths?: unknown };
+  const obj = value as {
+    version?: unknown;
+    syncPaths?: unknown;
+    agentPaths?: unknown;
+  };
+  // Schema gate: only `version: 1` lockfiles are accepted. Anything else
+  // (including a future v2) falls through to the legacy migration path in
+  // readState, so the next writeState overwrites with a v1 file.
+  if (obj.version !== 1) return null;
   if (!isStringArray(obj.syncPaths)) return null;
   if (!isStringArray(obj.agentPaths)) return null;
   return {
@@ -76,6 +85,10 @@ function toRootRelative(root: string, fullPath: string): string {
  * split their contents into sync vs agent paths by filename heuristic,
  * delete the markers, and return the resulting state. If there are no
  * markers either, return an empty state.
+ *
+ * Note: the legacy-migration fallback deletes the vulyk legacy
+ * marker files (e.g. `.vulyk-mark`, `_vulyk`) in the working
+ * directory; the lockfile itself is never mutated.
  */
 export function readState(dir: string): LockState {
   const lockPath = lockFilePath(dir);
@@ -84,9 +97,19 @@ export function readState(dir: string): LockState {
       const parsed: unknown = JSON.parse(fs.readFileSync(lockPath, "utf8"));
       const state = parseLockObject(parsed);
       if (state) return state;
+      // Lockfile present and parsed, but not at a known schema version
+      // (parseLockObject returned null after the version gate). Surface
+      // this so a teammate whose lockfile is at v2 or older doesn'''t
+      // silently fall through to migration.
+      log.warn(
+        `vulyk: lockfile at ${lockPath} not at version 1; falling through to legacy migration`,
+      );
     } catch {
       // Corrupt lockfile: fall through to migration. The next writeState
       // will replace it with a valid file.
+      log.warn(
+        `vulyk: lockfile at ${lockPath} unreadable; falling through to legacy migration`,
+      );
     }
   }
   return migrateFromLegacyMarkers(dir);
