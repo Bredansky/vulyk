@@ -63,6 +63,9 @@ jobs:
     steps:
       - name: Create GitHub release for ${{ github.ref_name }}
         env:
+          # gh CLI reads GH_TOKEN explicitly; the auto-injected
+          # GITHUB_TOKEN isn't picked up without this alias.
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
