@@ -45,3 +45,24 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ""
         run: npm publish
+
+  # ----------------------------------------------------------------------------
+  # Create a GitHub Release for the same tag so the sidebar's "Latest release"
+  # pointer stays current. Depends on the publish job succeeding.
+  #
+  # Why a separate job (not a step): `gh release create` needs `contents: write`
+  # on GITHUB_TOKEN, but the publish job must keep `id-token: write` for npm
+  # trusted publishing. Splitting them lets each job declare only the
+  # permissions it needs (least privilege).
+  # ----------------------------------------------------------------------------
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # required to create releases via gh CLI
+    steps:
+      - name: Create GitHub release for ${{ github.ref_name }}
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: gh release create "$TAG" --repo "$REPO" --title "$TAG" --generate-notes
