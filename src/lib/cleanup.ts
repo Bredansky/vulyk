@@ -47,22 +47,26 @@ function computeExpected(
     const outPaths = resolveOutputPaths(manifest, name);
     if (outPaths.length === 0) continue;
     const isLocal = fs.existsSync(path.resolve(projectRoot, entry.source));
-    // How the source installs:
-    //   - local file  -> flat file at <output>/<sourceBase><sourceExt>
-    //   - local dir   -> directory at <output>/<name>
-    //   - remote URL ending in an extension (e.g. pasika/blob/.../foo.md)
-    //     -> treated as a single file. installer.classifySource will
-    //     recognise the single-file-in-dir shape that fetchSource
-    //     produces for git blobs, so the flat-file install happens on
-    //     disk; we just need cleanup to categorise it as a file so it
-    //     stops preserving the vestigial <name>/ sibling directories
-    //     that older vulyk releases left behind.
-    //   - remote URL without an extension (e.g. pasika/tree/.../foo)
-    //     -> directory install.
+    // Install-shape decision (mirrors installer.classifySource):
+    //   - local file/dir  -> match on-disk shape (file or dir)
+    //   - remote URL whose path ends in a file extension
+    //     (e.g. pasika/blob/<sha>/foo.md, https://example.com/docs.md)
+    //     -> single-file fetch + flat file install
+    //   - remote URL with no extension (e.g. pasika/tree/<sha>/docs)
+    //     -> directory install
+    //   - non-local AND non-URL-shaped (e.g. legacy source: "alpha.md"
+    //     whose on-disk install is a directory): keep legacy
+    //     directory-install behaviour. The cleanupStale group-root
+    //     tests rely on this so legacy entries don't get their `.vulyk`
+    //     parent nuked.
     const sourceExt = path.extname(entry.source);
+    const looksLikeUrl =
+      /^https?:\/\//i.test(entry.source) ||
+      (entry.source.includes("/") && !isLocal);
+    const isRemoteSingleFile = !isLocal && looksLikeUrl && sourceExt.length > 0;
     const sourceIsDir = isLocal
       ? fs.statSync(path.resolve(projectRoot, entry.source)).isDirectory()
-      : sourceExt.length === 0;
+      : !isRemoteSingleFile;
     let sourceBase: string;
     if (sourceExt.length > 0) {
       sourceBase = path.basename(entry.source, sourceExt);
