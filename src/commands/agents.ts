@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import { findManifest, readManifest } from "../lib/manifest.js";
 import { getEntry, isEnabled, resolveAgents } from "../lib/groups.js";
 import { log } from "../lib/log.js";
-import { addToManifest } from "../lib/installer.js";
+import { readState, writeState } from "../lib/state.js";
+import { cleanupStale } from "../lib/cleanup.js";
 import { getDocSourcePath, getDocTitle } from "../lib/docs.js";
 import type { Manifest } from "../types.js";
 
@@ -20,12 +21,11 @@ function getTargetDir(projectRoot: string, target: string): string {
     : path.dirname(resolved);
 }
 
-/**
- * Render a primary agent file section for one entry. The section is
- * `# Title\n\ndescription\n\nFull documentation: <path>` — readable by
- * every tool (Claude Code follows the path, Codex/Hermes treat it as a
- * literal reference they can `cat` or `rg` directly).
- */
+function toRootRelative(projectRoot: string, abs: string): string {
+  const rel = path.relative(projectRoot, abs);
+  return rel.split(path.sep).join("/");
+}
+
 function renderPrimarySection(
   title: string,
   description: string,
@@ -47,8 +47,7 @@ interface AgentContribution {
 
 /**
  * Compute one entry's contribution to its primary agent file. Returns
- * an empty array when the entry has nothing to contribute (no targets,
- * no source, or empty agents list).
+ * an empty array when the entry has nothing to contribute.
  */
 function computePrimaryContribution(
   name: string,
@@ -83,17 +82,12 @@ function computePrimaryContribution(
   });
 }
 
-/**
- * Group primary contributions by their target file path and write each
- * shared agent file as the source-order composition of its sections,
- * separated by `---`. Idempotent on exact file content.
- */
 function writeComposedAgentFiles(
   contributions: AgentContribution[],
   secondaryWrites: { agentPath: string; body: string }[],
+  projectRoot: string,
+  newAgentPaths: string[],
 ): void {
-  // Group primary contributions by their target file path, preserving
-  // insertion order so the output mirrors the manifest's entry order.
   const buckets = new Map<string, AgentContribution[]>();
   for (const c of contributions) {
     const list = buckets.get(c.agentPath) ?? [];
@@ -115,13 +109,13 @@ function writeComposedAgentFiles(
     if (existing !== desired) {
       fs.writeFileSync(agentPath, desired);
     }
-    addToManifest(targetDir, [path.basename(agentPath)]);
+    newAgentPaths.push(toRootRelative(projectRoot, agentPath));
   }
 
   for (const { agentPath, body } of secondaryWrites) {
     fs.mkdirSync(path.dirname(agentPath), { recursive: true });
     fs.writeFileSync(agentPath, body);
-    addToManifest(path.dirname(agentPath), [path.basename(agentPath)]);
+    newAgentPaths.push(toRootRelative(projectRoot, agentPath));
   }
 }
 
@@ -129,6 +123,10 @@ function writeComposedAgentFiles(
  * Generate AGENTS.md/CLAUDE.md files for every enabled entry that has
  * `targets`. Does NOT install from sources — that's `vulyk sync`. Run
  * `vulyk sync` first, then `vulyk agents`.
+ *
+ * Tracks the produced agent file paths in `vulyk-lock.json`'s
+ * `agentPaths` array; previous agentPaths that are no longer produced
+ * are removed.
  */
 export function agentsCommand(
   cliOverrides: {
@@ -144,9 +142,15 @@ export function agentsCommand(
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
 
+  // Read previous state (transparently migrates legacy markers on
+  // first run, which is idempotent — if a migration already ran, the
+  // lockfile is now present and we go down the fast path).
+  const previousState = readState(projectRoot);
+
   log.blue("\nGenerating agent files:");
   const allContributions: AgentContribution[] = [];
   const allSecondaryWrites: { agentPath: string; body: string }[] = [];
+  const newAgentPaths: string[] = [];
 
   for (const name of Object.keys(manifest.entries)) {
     if (!isEnabled(manifest, name)) continue;
@@ -184,6 +188,20 @@ export function agentsCommand(
     }
   }
 
-  writeComposedAgentFiles(allContributions, allSecondaryWrites);
+  writeComposedAgentFiles(
+    allContributions,
+    allSecondaryWrites,
+    projectRoot,
+    newAgentPaths,
+  );
+
+  // Delete old agent files not in this run's output; preserve syncPaths.
+  cleanupStale(projectRoot, previousState.agentPaths, newAgentPaths);
+  writeState(projectRoot, {
+    version: 1,
+    syncPaths: previousState.syncPaths,
+    agentPaths: newAgentPaths,
+  });
+
   log.success("\nAgents complete");
 }

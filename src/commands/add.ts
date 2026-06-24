@@ -16,6 +16,7 @@ import {
   resolveGitignoreGenerated,
   isEnabled,
 } from "../lib/groups.js";
+import { readState, writeState } from "../lib/state.js";
 import type { Manifest, Group } from "../types.js";
 
 const DEFAULT_DIR_GROUP = {
@@ -129,12 +130,30 @@ function resolveGroupForSource(
   return defaultGroupFor(manifest, shape, srcPath);
 }
 
+/**
+ * Convert an absolute path to a root-relative forward-slash string used
+ * for `vulyk-lock.json` entries. Throws if `abs` is outside `root` —
+ * install() should never produce such paths, but if it ever does we want
+ * to surface that immediately rather than silently corrupting the lock.
+ */
+function toRootRelative(root: string, abs: string): string {
+  const rel = path.relative(root, abs);
+  if (rel.startsWith("..")) {
+    throw new Error(
+      `install() produced a path outside the project root: ${abs}`,
+    );
+  }
+  return rel.split(path.sep).join("/");
+}
+
 function installEntry(
   manifest: Manifest,
   entryName: string,
   srcPath: string,
   packageName: string,
   sourceIsLocal: boolean,
+  accumulator: string[],
+  projectRoot: string,
 ): string {
   const outputPaths = resolveOutputPaths(manifest, entryName);
   if (outputPaths.length === 0) {
@@ -153,11 +172,19 @@ function installEntry(
   // a single file inside is the user's intentional layout, not a remote-blob
   // temp dir.
   const preservePaths = sourceIsLocal ? [srcPath] : undefined;
-  const installName = install(packageName, srcPath, outputPaths, {
-    gitignore,
-    preservePaths,
-    preserveFolderForSingleFile: sourceIsLocal,
-  });
+  const { installName, managedPaths } = install(
+    packageName,
+    srcPath,
+    outputPaths,
+    {
+      gitignore,
+      preservePaths,
+      preserveFolderForSingleFile: sourceIsLocal,
+    },
+  );
+  for (const abs of managedPaths) {
+    accumulator.push(toRootRelative(projectRoot, abs));
+  }
   return installName;
 }
 
@@ -174,6 +201,7 @@ function addOneSource(
   groupHint: string | undefined,
   sourceIsLocal: boolean,
   specifierForEntry: (subPath?: string) => string,
+  accumulator: string[],
 ): void {
   const shape = inspectSource(sourcePath);
   if (!shape.exists) {
@@ -213,7 +241,15 @@ function addOneSource(
           group: subGroup,
           ...(inline ?? {}),
         };
-        installEntry(manifest, entryName, subPath, entryName, sourceIsLocal);
+        installEntry(
+          manifest,
+          entryName,
+          subPath,
+          entryName,
+          sourceIsLocal,
+          accumulator,
+          projectRoot,
+        );
         log.success(
           `Added "${entryName}"${subGroup ? ` to group "${subGroup}"` : " (inline)"}`,
         );
@@ -240,6 +276,8 @@ function addOneSource(
     sourcePath,
     entryName,
     sourceIsLocal,
+    accumulator,
+    projectRoot,
   );
   log.success(
     `Added "${installName}"${group ? ` to group "${group}"` : " (inline)"}`,
@@ -255,6 +293,7 @@ async function addRemote(
   manifest: Manifest,
   _projectRoot: string,
   groupHint: string | undefined,
+  accumulator: string[],
 ): Promise<void> {
   log.info(`Fetching ${nameHint}...`);
   const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", nameHint);
@@ -285,6 +324,7 @@ async function addRemote(
     false,
     (sub) =>
       sub ? `${stripPinnedRef(finalSpecifier)}/${sub}` : finalSpecifier,
+    accumulator,
   );
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
@@ -294,6 +334,7 @@ function addLocal(
   manifest: Manifest,
   projectRoot: string,
   groupHint: string | undefined,
+  accumulator: string[],
 ): void {
   const sourcePath = path.resolve(projectRoot, specifier);
   addOneSource(
@@ -304,12 +345,13 @@ function addLocal(
     groupHint,
     true,
     () => path.relative(projectRoot, sourcePath).replace(/\\/g, "/"),
+    accumulator,
   );
 }
 
 export async function addCommand(
   specifier: string,
-  opts: { name?: string; group?: string },
+  opts: { name?: string; group?: string } = {},
 ): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
@@ -325,11 +367,39 @@ export async function addCommand(
     specifier.split("/").filter(Boolean).pop()?.replace(/@.*$/, "") ??
     specifier;
 
+  // Every install `add` produces is recorded in `vulyk-lock.json`.
+  // We merge the new paths with whatever `sync` / `agents` previously
+  // wrote so subsequent cleanup can rely on the union of them.
+  const previousState = readState(projectRoot);
+  const newSyncPaths: string[] = [];
+
   if (!isRemoteSpecifier(specifier)) {
-    addLocal(specifier, manifest, projectRoot, opts.group);
+    addLocal(specifier, manifest, projectRoot, opts.group, newSyncPaths);
   } else {
-    await addRemote(specifier, nameHint, manifest, projectRoot, opts.group);
+    await addRemote(
+      specifier,
+      nameHint,
+      manifest,
+      projectRoot,
+      opts.group,
+      newSyncPaths,
+    );
   }
 
+  // Persist the manifest (source of INTENT) first, then the lockfile
+  // (cleanup truth). The order matters: if writeManifest were to fail
+  // AFTER writeState succeeded, the lockfile would be ahead of the
+  // manifest and the next `vulyk sync` would treat the just-installed
+  // paths as stale. By writing manifest first, a later writeState failure
+  // simply leaves the next `sync` to re-record the paths (idempotent).
   writeManifest(manifestPath, manifest);
+
+  // Preserve agentPaths from prior runs so `vulyk agents` can reconcile
+  // against them; writeState sorts + normalises the arrays.
+  const mergedSync = new Set([...previousState.syncPaths, ...newSyncPaths]);
+  writeState(projectRoot, {
+    version: 1,
+    syncPaths: [...mergedSync].sort(),
+    agentPaths: previousState.agentPaths,
+  });
 }

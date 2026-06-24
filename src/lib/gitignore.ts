@@ -166,8 +166,8 @@ export function refreshGitignore(
   projectRoot: string,
 ): void {
   const entries = computeExpectedGitignoreEntries(manifest, projectRoot);
-  // Always gitignore the `.vulyk` manifest files themselves — they
-  // describe vulyk's install state, not user content.
-  entries.unshift("**/.vulyk");
+  // `**/.vulyk` is no longer in the managed block: per-directory markers
+  // were dropped in favour of a single committed `vulyk-lock.json`
+  // at the project root (see src/lib/state.ts).
   updateRootGitignore(entries);
 }

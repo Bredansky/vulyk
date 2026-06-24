@@ -14,20 +14,29 @@ import { refreshGitignore } from "../lib/gitignore.js";
 import { log } from "../lib/log.js";
 import { pinSpecifier } from "../lib/specifier.js";
 import { cleanupStale } from "../lib/cleanup.js";
+import { readState, writeState } from "../lib/state.js";
 import type { Manifest } from "../types.js";
 
 function isLocalSource(projectRoot: string, source: string): boolean {
   return fs.existsSync(path.resolve(projectRoot, source));
 }
 
+function toRootRelative(projectRoot: string, absPath: string): string {
+  const rel = path.relative(projectRoot, absPath);
+  return rel.split(path.sep).join("/");
+}
+
 /**
- * Sync one entry: install from source into the configured output paths.
- * No agent-file generation happens here — that lives in `agentsCommand`.
+ * Sync one entry from its source to the configured output paths. Returns
+ * the absolute paths that were actually written (the install's
+ * `managedPaths`). Note: `vulyk sync` does NOT generate AGENTS.md/CLAUDE.md
+ * — that's the `vulyk agents` command's responsibility.
  */
 async function syncEntry(
   name: string,
   projectRoot: string,
   manifest: Manifest,
+  newSyncPaths: string[],
 ): Promise<string | undefined> {
   const entry = getEntry(manifest, name);
   if (!entry) return undefined;
@@ -45,7 +54,6 @@ async function syncEntry(
 
   const outPaths = resolveOutputPaths(manifest, name);
   const explicitGitignore = resolveGitignoreGenerated(manifest, name);
-  // undefined → install function uses per-path heuristic
   const gitignore = explicitGitignore;
   const sourceIsLocal = isLocalSource(projectRoot, entry.source);
 
@@ -53,13 +61,14 @@ async function syncEntry(
 
   if (sourceIsLocal) {
     const sourcePath = path.resolve(projectRoot, entry.source);
-    install(name, sourcePath, outPaths, {
+    const result = install(name, sourcePath, outPaths, {
       gitignore,
       preservePaths: [sourcePath],
-      // Local sources: preserve the folder shape even if the directory
-      // contains a single file (the user chose that structure).
       preserveFolderForSingleFile: true,
     });
+    for (const p of result.managedPaths) {
+      newSyncPaths.push(toRootRelative(projectRoot, p));
+    }
   } else {
     const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
     if (fs.existsSync(tmpDir)) {
@@ -67,7 +76,10 @@ async function syncEntry(
     }
     try {
       const commit = await fetchSource(parseSource(entry.source), tmpDir);
-      install(name, tmpDir, outPaths, { gitignore });
+      const result = install(name, tmpDir, outPaths, { gitignore });
+      for (const p of result.managedPaths) {
+        newSyncPaths.push(toRootRelative(projectRoot, p));
+      }
       fs.rmSync(tmpDir, { recursive: true, force: true });
       updatedSource = commit
         ? pinSpecifier(entry.source, commit)
@@ -85,9 +97,9 @@ async function syncEntry(
 }
 
 /**
- * Sync every enabled entry: install from source, refresh gitignore, prune
- * stale managed files. Does NOT generate agent files (AGENTS.md/CLAUDE.md) —
- * that's `vulyk agents`.
+ * Sync every enabled entry: install from source, populate
+ * `vulyk-lock.json`, prune stale managed files, refresh the gitignore
+ * block.
  */
 export async function syncCommand(): Promise<void> {
   const manifestPath = findManifest();
@@ -99,27 +111,53 @@ export async function syncCommand(): Promise<void> {
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
 
-  cleanupStale(manifest, projectRoot);
+  // Read the previous state. `readState` transparently migrates any
+  // legacy per-directory `.vulyk` markers on first run.
+  const previousState = readState(projectRoot);
 
   log.blue("\nSyncing entries:");
   let changed = false;
+  const newSyncPaths: string[] = [];
 
   for (const name of Object.keys(manifest.entries)) {
     const entry = getEntry(manifest, name);
     if (!entry) continue;
-    const updatedSource = await syncEntry(name, projectRoot, manifest);
+    const updatedSource = await syncEntry(
+      name,
+      projectRoot,
+      manifest,
+      newSyncPaths,
+    );
     if (updatedSource && updatedSource !== entry.source) {
       manifest.entries[name] = { ...entry, source: updatedSource };
       changed = true;
     }
   }
 
+  // Set-difference: paths in `previousState.syncPaths` that aren't
+  // produced by this sync are deleted (file-, dir-, or empty-parent
+  // cleanup happens inside applyCleanupDelta).
+  cleanupStale(projectRoot, previousState.syncPaths, newSyncPaths);
+
+  // Persist manifest first (the source of INTENT) when entries were
+  // re-pinned, then write the lockfile (cleanup truth). If writeState
+  // were to fail AFTER writeManifest succeeded, the next `vulyk sync`
+  // would see the manifest's entries, re-install them (idempotent), and
+  // re-record the paths; the inverted order would silently prune the
+  // just-installed entries on the next sync. Matches the order in add.ts.
+
   if (changed) writeManifest(manifestPath, manifest);
 
+  // We deliberately preserve agentPaths so a subsequent `vulyk agents`
+  // can reconcile against what it produces.
+  writeState(projectRoot, {
+    version: 1,
+    syncPaths: newSyncPaths,
+    agentPaths: previousState.agentPaths,
+  });
+
   // Refresh the gitignore block to match the current state of the file
-  // system. The per-install updates add new entries but never remove
-  // stale ones (e.g. a previous folder install that's now a flat file),
-  // so the block accumulates garbage across syncs.
+  // system (no `**/.vulyk` is inserted any more — see gitignore.ts).
   refreshGitignore(manifest, projectRoot);
 
   log.success("\nSync complete");
