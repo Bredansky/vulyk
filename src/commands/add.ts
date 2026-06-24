@@ -132,7 +132,7 @@ function resolveGroupForSource(
 
 /**
  * Convert an absolute path to a root-relative forward-slash string used
- * for `vulyk-lock.json` entries. Throws if `abs` is outside `root` —
+ * for `.vulyk` entries. Throws if `abs` is outside `root` —
  * install() should never produce such paths, but if it ever does we want
  * to surface that immediately rather than silently corrupting the lock.
  */
@@ -367,7 +367,7 @@ export async function addCommand(
     specifier.split("/").filter(Boolean).pop()?.replace(/@.*$/, "") ??
     specifier;
 
-  // Every install `add` produces is recorded in `vulyk-lock.json`.
+  // Every install `add` produces is recorded in `.vulyk`.
   // We merge the new paths with whatever `sync` / `agents` previously
   // wrote so subsequent cleanup can rely on the union of them.
   const previousState = readState(projectRoot);
@@ -398,7 +398,6 @@ export async function addCommand(
   // against them; writeState sorts + normalises the arrays.
   const mergedSync = new Set([...previousState.syncPaths, ...newSyncPaths]);
   writeState(projectRoot, {
-    version: 1,
     syncPaths: [...mergedSync].sort(),
     agentPaths: previousState.agentPaths,
   });

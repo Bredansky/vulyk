@@ -8,13 +8,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { agentsCommand } from "../src/commands/agents.js";
-import {
-  readState,
-  writeState,
-  parseLockObject,
-  type LockState,
-  LOCK_FILENAME,
-} from "../src/lib/state.js";
+import { readState, type VulykState, writeState } from "../src/lib/state.js";
 
 function makeTempProject(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-agents-dedup-"));
@@ -30,17 +24,8 @@ function writeFile(filePath: string, body: string): void {
   fs.writeFileSync(filePath, body, "utf8");
 }
 
-function readLockfile(projectRoot: string): LockState {
-  const raw: unknown = JSON.parse(
-    fs.readFileSync(path.join(projectRoot, LOCK_FILENAME), "utf8"),
-  );
-  const parsed = parseLockObject(raw);
-  if (!parsed) {
-    throw new Error(
-      `readLockfile: ${LOCK_FILENAME} at project root did not parse as LockState`,
-    );
-  }
-  return parsed;
+function readLockfile(projectRoot: string): VulykState {
+  return readState(projectRoot);
 }
 
 const createdDirs: string[] = [];
@@ -132,7 +117,6 @@ void test("writeState defensively dedups syncPaths/agentPaths even when callers 
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
   writeState(projectRoot, {
-    version: 1,
     syncPaths: ["x", "x", "y", "z", "y"],
     agentPaths: ["AGENTS.md", "AGENTS.md", "CLAUDE.md"],
   });

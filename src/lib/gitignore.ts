@@ -152,7 +152,7 @@ export function computeExpectedGitignoreEntries(
     }
   }
 
-  return [...entries].sort();
+  return [...new Set([".vulyk", ...entries])].sort();
 }
 
 /**
@@ -167,7 +167,7 @@ export function refreshGitignore(
 ): void {
   const entries = computeExpectedGitignoreEntries(manifest, projectRoot);
   // `**/.vulyk` is no longer in the managed block: per-directory markers
-  // were dropped in favour of a single committed `vulyk-lock.json`
+  // were dropped in favour of a single committed `.vulyk`
   // at the project root (see src/lib/state.ts).
   updateRootGitignore(entries);
 }

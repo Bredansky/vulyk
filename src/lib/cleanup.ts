@@ -1,5 +1,5 @@
 // `cleanup.ts` used to walk the filesystem searching for per-directory
-// `.vulyk` markers. That mechanism is gone — vulyk-lock.json at the
+// `.vulyk` markers. That mechanism is gone — .vulyk at the
 // project root is now the single source of truth.
 //
 // `cleanupStale` is preserved as a thin wrapper over

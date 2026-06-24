@@ -5,7 +5,7 @@ import * as os from "node:os";
 // file or the root .gitignore. The root .gitignore is owned exclusively
 // by `vulyk sync` (via refreshGitignore). What this install DOES emit is
 // the absolute paths of files/dirs it created, returned in InstallResult
-// — callers feed that into vulyk-lock.json so a subsequent sync can
+// — callers feed that into .vulyk so a subsequent sync can
 // detect stale entries via state.applyCleanupDelta(.
 export function resolvePath(p: string): string {
   return p.startsWith("~")
@@ -122,7 +122,7 @@ export function classifySource(
  * Install an entry from a source path into one or more output paths.
  * Returns the install name and the absolute paths of files/dirs that
  * were actually created (or refreshed) on disk. Callers collect those
- * paths into `vulyk-lock.json` so the next `vulyk sync`/`agents` can
+ * paths into `.vulyk` so the next `vulyk sync`/`agents` can
  * compute set-difference cleanups.
  */
 export function install(

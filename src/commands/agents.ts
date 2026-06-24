@@ -6,6 +6,7 @@ import { log } from "../lib/log.js";
 import { readState, writeState } from "../lib/state.js";
 import { cleanupStale } from "../lib/cleanup.js";
 import { getDocSourcePath, getDocTitle } from "../lib/docs.js";
+import { refreshGitignore } from "../lib/gitignore.js";
 import type { Manifest } from "../types.js";
 
 function getTargetDir(projectRoot: string, target: string): string {
@@ -133,7 +134,7 @@ function writeComposedAgentFiles(
  * `targets`. Does NOT install from sources — that's `vulyk sync`. Run
  * `vulyk sync` first, then `vulyk agents`.
  *
- * Tracks the produced agent file paths in `vulyk-lock.json`'s
+ * Tracks the produced agent file paths in `.vulyk`'s
  * `agentPaths` array; previous agentPaths that are no longer produced
  * are removed.
  */
@@ -204,21 +205,14 @@ export function agentsCommand(
     newAgentPaths,
   );
 
-  // De-dup agentPaths at the boundary: multiple entries sharing the same
-  // target dir each produced a write to the same path (e.g. ./CLAUDE.md),
-  // so newAgentPaths may contain duplicates. writeState's defensive Set
-  // dedup would also catch this, but pinning it here too makes the
-  // contract explicit at the agentsCommand boundary and keeps the
-  // single-iteration write loop above simple.
-  const dedupedAgentPaths = [...new Set(newAgentPaths)];
-
   // Delete old agent files not in this run's output; preserve syncPaths.
-  cleanupStale(projectRoot, previousState.agentPaths, dedupedAgentPaths);
+  cleanupStale(projectRoot, previousState.agentPaths, newAgentPaths);
   writeState(projectRoot, {
-    version: 1,
     syncPaths: previousState.syncPaths,
-    agentPaths: dedupedAgentPaths,
+    agentPaths: newAgentPaths,
   });
+
+  refreshGitignore(manifest, projectRoot);
 
   log.success("\nAgents complete");
 }

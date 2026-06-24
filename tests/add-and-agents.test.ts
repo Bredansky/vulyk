@@ -8,11 +8,7 @@ import { removeCommand } from "../src/commands/remove.js";
 import { agentsCommand } from "../src/commands/agents.js";
 import { syncCommand } from "../src/commands/sync.js";
 import { readManifest } from "../src/lib/manifest.js";
-import {
-  LOCK_FILENAME,
-  parseLockObject,
-  type LockState,
-} from "../src/lib/state.js";
+import { readState } from "../src/lib/state.js";
 
 function makeTempProject(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-add-test-"));
@@ -28,28 +24,21 @@ function writeFile(filePath: string, body: string): void {
   fs.writeFileSync(filePath, body, "utf8");
 }
 
-function readLockfile(projectRoot: string): LockState {
-  const lockPath = path.join(projectRoot, LOCK_FILENAME);
-  const raw: unknown = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-  const parsed = parseLockObject(raw);
-  if (!parsed) {
-    throw new Error(
-      `readLockfile: ${LOCK_FILENAME} at ${lockPath} did not parse as LockState`,
-    );
-  }
-  return parsed;
-}
-
 const createdDirs: string[] = [];
 
 afterEach(() => {
   while (createdDirs.length > 0) {
     const dir = createdDirs.pop();
-    if (dir) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+    if (dir) fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+function readLockfile(projectRoot: string): {
+  syncPaths: string[];
+  agentPaths: string[];
+} {
+  return readState(projectRoot);
+}
 
 void test("addCommand installs a local skill and writes config inline when no groups are configured", async () => {
   const projectRoot = makeTempProject();
@@ -521,10 +510,10 @@ void test("agentsCommand leaves user-added files in an output path alone", () =>
       fs.existsSync(path.join(projectRoot, "docs", "external", "my-notes.md")),
       true,
     );
-    // Agents did not run a sync, so vulyk-lock.json does NOT exist
+    // Agents did not run a sync, so .vulyk does NOT exist
     // yet (or it could carry agentPaths). Either way, my-notes.md is
     // not in the lockfile.
-    if (fs.existsSync(path.join(projectRoot, LOCK_FILENAME))) {
+    if (fs.existsSync(path.join(projectRoot, ".vulyk"))) {
       const lock = readLockfile(projectRoot);
       assert.ok(!lock.syncPaths.includes("docs/external/my-notes.md"));
       assert.ok(!lock.agentPaths.includes("docs/external/my-notes.md"));

@@ -1,5 +1,5 @@
 // The old cleanup-group-root.test.ts pinned behaviour of the legacy
-// per-dir `.vulyk` walker. That walker is gone (vulyk-lock.json is now
+// per-dir `.vulyk` walker. That walker is gone (.vulyk is now
 // the single source of truth). This file now pins applyCleanupDelta's
 // set-difference semantics using fs-only fixtures.
 

@@ -98,7 +98,7 @@ async function syncEntry(
 
 /**
  * Sync every enabled entry: install from source, populate
- * `vulyk-lock.json`, prune stale managed files, refresh the gitignore
+ * `.vulyk`, prune stale managed files, refresh the gitignore
  * block.
  */
 export async function syncCommand(): Promise<void> {
@@ -151,7 +151,6 @@ export async function syncCommand(): Promise<void> {
   // We deliberately preserve agentPaths so a subsequent `vulyk agents`
   // can reconcile against what it produces.
   writeState(projectRoot, {
-    version: 1,
     syncPaths: newSyncPaths,
     agentPaths: previousState.agentPaths,
   });
