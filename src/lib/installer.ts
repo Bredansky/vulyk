@@ -105,10 +105,16 @@ export interface InstallOptions {
 }
 
 /**
+ * @internal
+ *
  * Classify the source: file install vs folder install, with the effective
  * source path (for single-file-in-dir cases) and the file extension.
+ *
+ * Exported so tests can exercise the (1-file-+-N-dirs) shape directly,
+ * without going through the full install() pipeline. Not part of the
+ * vulyk CLI public surface.
  */
-function classifySource(
+export function classifySource(
   srcPath: string,
   preserveFolderForSingleFile: boolean,
 ): {
@@ -140,7 +146,17 @@ function classifySource(
   const fileNames = entries.filter((e) => e.isFile()).map((e) => e.name);
   const dirNames = entries.filter((e) => e.isDirectory()).map((e) => e.name);
   if (fileNames.length === 1 && dirNames.length === 0) {
-    const singleFile = path.join(srcPath, fileNames[0]);
+    // noUncheckedIndexedAccess widens fileNames[0] to `string | undefined`
+    // even though the length guard just confirmed otherwise, so we
+    // assign into `single` and explicitly check for undefined. The
+    // length check above already guarantees `single` is a string here;
+    // the runtime guard is for the type checker, not the runtime, so it
+    // throws rather than silently dropping the install.
+    const single = fileNames[0];
+    if (single === undefined) {
+      throw new Error("classifySource: length === 1 but first element missing");
+    }
+    const singleFile = path.join(srcPath, single);
     return {
       isFileInstall: true,
       effectiveSrc: singleFile,
