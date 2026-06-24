@@ -131,11 +131,15 @@ function classifySource(
   }
   // Otherwise, check if it's a single-file dir — the typical shape of a
   // remote blob source fetched into a temp dir. Treat as file install.
-  const entries = fs.readdirSync(srcPath);
-  const fileNames = entries.filter((e) =>
-    fs.statSync(path.join(srcPath, e)).isFile(),
-  );
-  if (fileNames.length === 1) {
+  // We only unwrap when there is EXACTLY ONE file AND NO subdirectories.
+  // A tree source that happens to have just one top-level file alongside
+  // any number of subdirs (e.g. a pasika/tree/<sha>/<name> containing
+  // <name>.md + <name>/, references/, rules/) must still install as a
+  // folder so the subdirs aren't silently dropped.
+  const entries = fs.readdirSync(srcPath, { withFileTypes: true });
+  const fileNames = entries.filter((e) => e.isFile()).map((e) => e.name);
+  const dirNames = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  if (fileNames.length === 1 && dirNames.length === 0) {
     const singleFile = path.join(srcPath, fileNames[0]);
     return {
       isFileInstall: true,
