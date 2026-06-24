@@ -47,11 +47,30 @@ function computeExpected(
     const outPaths = resolveOutputPaths(manifest, name);
     if (outPaths.length === 0) continue;
     const isLocal = fs.existsSync(path.resolve(projectRoot, entry.source));
+    // How the source installs:
+    //   - local file  -> flat file at <output>/<sourceBase><sourceExt>
+    //   - local dir   -> directory at <output>/<name>
+    //   - remote URL ending in an extension (e.g. pasika/blob/.../foo.md)
+    //     -> treated as a single file. installer.classifySource will
+    //     recognise the single-file-in-dir shape that fetchSource
+    //     produces for git blobs, so the flat-file install happens on
+    //     disk; we just need cleanup to categorise it as a file so it
+    //     stops preserving the vestigial <name>/ sibling directories
+    //     that older vulyk releases left behind.
+    //   - remote URL without an extension (e.g. pasika/tree/.../foo)
+    //     -> directory install.
+    const sourceExt = path.extname(entry.source);
     const sourceIsDir = isLocal
       ? fs.statSync(path.resolve(projectRoot, entry.source)).isDirectory()
-      : true; // assume remote is a dir (skill-style) by default
-    const sourceExt = isLocal ? path.extname(entry.source) : "";
-    const sourceBase = isLocal ? path.basename(entry.source, sourceExt) : name;
+      : sourceExt.length === 0;
+    let sourceBase: string;
+    if (sourceExt.length > 0) {
+      sourceBase = path.basename(entry.source, sourceExt);
+    } else if (isLocal) {
+      sourceBase = path.basename(entry.source);
+    } else {
+      sourceBase = name;
+    }
     for (const outPath of outPaths) {
       // Resolve relative to projectRoot, not CWD. vulyk commands may be
       // invoked from any directory; the manifest's paths are always

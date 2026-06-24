@@ -1,7 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { updateRootGitignore, getRootGitignoreEntries } from "./gitignore.js";
+// NOTE: this module intentionally does NOT import updateRootGitignore or
+// getRootGitignoreEntries from "./gitignore.js". The root .gitignore is
+// managed exclusively by `vulyk sync`, via `refreshGitignore()` in
+// "./gitignore.ts", which inspects the filesystem to derive the correct
+// entries. Likewise `install()` no longer mutates .gitignore (see body).
 
 export function resolvePath(p: string): string {
   return p.startsWith("~")
@@ -204,31 +208,19 @@ export function install(
     }
   }
 
-  // Gitignore handling.
-  // - If the manifest explicitly opted in via `gitIgnore: true`, add the
-  //   install paths to the root .gitignore.
-  // - Always skip paths where the source and destination resolve to the
-  //   same location: those are local files vulyk is "tracking in place",
-  //   and the user's own source code should never be gitignored.
-  if (opts.gitignore === true) {
-    const entries = new Set(getRootGitignoreEntries());
-    for (const outputPath of outputPaths) {
-      const resolved = resolvePath(outputPath);
-      const dest = isFileInstall
-        ? path.join(resolved, `${installName}${ext}`)
-        : path.join(resolved, installName);
-      if (isPreservedPath(dest, opts.preservePaths)) continue;
-      const srcSameAsDest = isFileInstall
-        ? path.resolve(effectiveSrc) === path.resolve(dest)
-        : path.resolve(srcPath) === path.resolve(dest);
-      if (srcSameAsDest) continue;
-      const relativeEntry = isFileInstall
-        ? `${outputPath}/${installName}${ext}`
-        : `${outputPath}/${installName}/`;
-      entries.add(relativeEntry);
-    }
-    updateRootGitignore([...entries].sort());
-  }
+  // Gitignore ownership: this function does NOT mutate the root
+  // `.gitignore`. The vulyk-managed block is owned exclusively by
+  // `vulyk sync`, which calls `refreshGitignore()` in "./gitignore.ts"
+  // at the end of a sync run. That helper inspects the filesystem to
+  // derive the correct set of entries, so per-install bookkeeping here
+  // was redundant for sync and would otherwise accumulate stale
+  // entries across `vulyk update` / `vulyk add` runs (neither of
+  // which is responsible for gitignore cleanup).
+  //
+  // `vulyk agents` does not call `install()` at all, so it never
+  // touches `.gitignore` either way. The `opts.gitignore` field is
+  // retained for backwards compatibility but is no-op here — run
+  // `vulyk sync` to ensure `.gitignore` is current.
 
   return installName;
 }
