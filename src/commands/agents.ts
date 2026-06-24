@@ -82,6 +82,15 @@ function computePrimaryContribution(
   });
 }
 
+/**
+ * Render AGENTS.md/CLAUDE.md files and accumulate root-relative paths
+ * into `newAgentPaths`. Primary contributions dedup implicitly — the
+ * `buckets` Map is keyed by `agentPath` so each unique target gets
+ * exactly one push. Secondary writes do NOT dedup: each
+ * (entry × target × secondary agent) produces one push. The combined
+ * `newAgentPaths` array is then deduped at the agentsCommand boundary
+ * before cleanupStale and writeState, so this helper stays simple.
+ */
 function writeComposedAgentFiles(
   contributions: AgentContribution[],
   secondaryWrites: { agentPath: string; body: string }[],
@@ -195,12 +204,20 @@ export function agentsCommand(
     newAgentPaths,
   );
 
+  // De-dup agentPaths at the boundary: multiple entries sharing the same
+  // target dir each produced a write to the same path (e.g. ./CLAUDE.md),
+  // so newAgentPaths may contain duplicates. writeState's defensive Set
+  // dedup would also catch this, but pinning it here too makes the
+  // contract explicit at the agentsCommand boundary and keeps the
+  // single-iteration write loop above simple.
+  const dedupedAgentPaths = [...new Set(newAgentPaths)];
+
   // Delete old agent files not in this run's output; preserve syncPaths.
-  cleanupStale(projectRoot, previousState.agentPaths, newAgentPaths);
+  cleanupStale(projectRoot, previousState.agentPaths, dedupedAgentPaths);
   writeState(projectRoot, {
     version: 1,
     syncPaths: previousState.syncPaths,
-    agentPaths: newAgentPaths,
+    agentPaths: dedupedAgentPaths,
   });
 
   log.success("\nAgents complete");

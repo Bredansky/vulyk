@@ -100,10 +100,13 @@ export function readState(dir: string): LockState {
 export function writeState(dir: string, state: LockState): void {
   const lockPath = lockFilePath(dir);
   const tmp = `${lockPath}.tmp`;
+  // Last-write boundary defense: redundant with caller-side dedup today,
+  // kept cheap so a single caller regression (e.g. agents files × N) can't
+  // permanently pollute the lockfile.
   const payload = {
     version: 1,
-    syncPaths: [...state.syncPaths].sort(),
-    agentPaths: [...state.agentPaths].sort(),
+    syncPaths: [...new Set(state.syncPaths)].sort(),
+    agentPaths: [...new Set(state.agentPaths)].sort(),
   };
   fs.writeFileSync(tmp, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   fs.renameSync(tmp, lockPath);
