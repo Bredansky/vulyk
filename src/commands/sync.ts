@@ -76,7 +76,10 @@ async function syncEntry(
     }
     try {
       const commit = await fetchSource(parseSource(entry.source), tmpDir);
-      const result = install(name, tmpDir, outPaths, { gitignore });
+      const result = install(name, tmpDir, outPaths, {
+        gitignore,
+        preserveFolderForSingleFile: true,
+      });
       for (const p of result.managedPaths) {
         newSyncPaths.push(toRootRelative(projectRoot, p));
       }
