@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import packageJson from "../package.json" with { type: "json" };
 import { initCommand } from "./commands/init.js";
 import { addCommand } from "./commands/add.js";
 import { removeCommand } from "./commands/remove.js";
@@ -17,7 +18,7 @@ const program = new Command();
 program
   .name("vulyk")
   .description("Package manager for AI agent skills and tracked docs")
-  .version("0.10.0");
+  .version(packageJson.version);
 
 program
   .command("init")
