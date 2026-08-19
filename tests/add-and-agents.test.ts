@@ -8,7 +8,7 @@ import { removeCommand } from "../src/commands/remove.js";
 import { agentsCommand } from "../src/commands/agents.js";
 import { syncCommand } from "../src/commands/sync.js";
 import { readManifest } from "../src/lib/manifest.js";
-import { readState } from "../src/lib/state.js";
+import { readState, writeState } from "../src/lib/state.js";
 
 function makeTempProject(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-add-test-"));
@@ -471,6 +471,46 @@ void test("syncCommand prunes tracked managed paths whose entry is removed from 
   } finally {
     process.chdir(initialCwd);
   }
+});
+
+void test("syncCommand preserves managed files and state when an entry fails", async () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.json"), {
+    entries: {
+      broken: {
+        source: "not-a-supported-source",
+        outputPaths: ["managed-docs"],
+      },
+    },
+  });
+  writeFile(
+    path.join(projectRoot, "managed-docs", "existing.md"),
+    "existing\n",
+  );
+  writeState(projectRoot, {
+    syncPaths: ["managed-docs/existing.md"],
+    agentPaths: [],
+  });
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  let succeeded = false;
+  try {
+    succeeded = await syncCommand();
+  } finally {
+    process.chdir(initialCwd);
+  }
+
+  assert.equal(succeeded, false);
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, "managed-docs", "existing.md")),
+    true,
+  );
+  assert.deepEqual(readState(projectRoot).syncPaths, [
+    "managed-docs/existing.md",
+  ]);
 });
 
 void test("agentsCommand leaves user-added files in an output path alone", () => {

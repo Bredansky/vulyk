@@ -87,7 +87,7 @@ program
   .command("sync")
   .description("Install all enabled entries from their sources to output paths")
   .action(async () => {
-    await syncCommand();
+    if (!(await syncCommand())) process.exitCode = 1;
   });
 
 program

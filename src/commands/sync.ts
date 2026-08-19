@@ -37,7 +37,7 @@ async function syncEntry(
   projectRoot: string,
   manifest: Manifest,
   newSyncPaths: string[],
-): Promise<string | undefined> {
+): Promise<string | null | undefined> {
   const entry = getEntry(manifest, name);
   if (!entry) return undefined;
 
@@ -99,7 +99,7 @@ async function syncEntry(
       log.error(
         `Failed to sync "${name}": ${err instanceof Error ? err.message : String(err)}`,
       );
-      return undefined;
+      return null;
     }
   }
 
@@ -112,7 +112,7 @@ async function syncEntry(
  * `.vulyk`, prune stale managed files, refresh the gitignore
  * block.
  */
-export async function syncCommand(): Promise<void> {
+export async function syncCommand(): Promise<boolean> {
   const manifestPath = findManifest();
   if (!manifestPath) {
     log.error("No vulyk.json found.");
@@ -128,6 +128,7 @@ export async function syncCommand(): Promise<void> {
 
   log.blue("\nSyncing entries:");
   let changed = false;
+  let failed = false;
   const newSyncPaths: string[] = [];
 
   for (const name of Object.keys(manifest.entries)) {
@@ -139,10 +140,21 @@ export async function syncCommand(): Promise<void> {
       manifest,
       newSyncPaths,
     );
+    if (updatedSource === null) {
+      failed = true;
+      continue;
+    }
     if (updatedSource && updatedSource !== entry.source) {
       manifest.entries[name] = { ...entry, source: updatedSource };
       changed = true;
     }
+  }
+
+  if (failed) {
+    log.error(
+      "\nSync failed; managed-file cleanup and state updates were skipped.",
+    );
+    return false;
   }
 
   // Set-difference: paths in `previousState.syncPaths` that aren't
@@ -171,4 +183,5 @@ export async function syncCommand(): Promise<void> {
   refreshGitignore(manifest, projectRoot);
 
   log.success("\nSync complete");
+  return true;
 }
