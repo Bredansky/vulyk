@@ -161,15 +161,30 @@ function fetchGitSource(resolved: GitResolvedSource, destDir: string): string {
     );
     fs.rmSync(archivePath, { force: true });
   } else {
-    const archive = execFileSync(
-      "git",
-      ["--git-dir", repoCache, "archive", "--format=tar", archiveTarget],
-      { stdio: ["ignore", "pipe", "pipe"] },
+    const archivePath = path.join(
+      os.tmpdir(),
+      `vulyk-${String(process.pid)}-${String(Date.now())}.tar`,
     );
-    execFileSync("tar", ["-x", "-C", destDir, "-f", "-"], {
-      input: archive,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    try {
+      execFileSync(
+        "git",
+        [
+          "--git-dir",
+          repoCache,
+          "archive",
+          "--format=tar",
+          "-o",
+          archivePath,
+          archiveTarget,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+      execFileSync("tar", ["-x", "-C", destDir, "-f", archivePath], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } finally {
+      fs.rmSync(archivePath, { force: true });
+    }
   }
 
   return commit;
