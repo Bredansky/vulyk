@@ -64,7 +64,6 @@ async function syncEntry(
     const result = install(name, sourcePath, outPaths, {
       gitignore,
       preservePaths: [sourcePath],
-      preserveFolderForSingleFile: true,
     });
     for (const p of result.managedPaths) {
       newSyncPaths.push(toRootRelative(projectRoot, p));
@@ -76,7 +75,19 @@ async function syncEntry(
     }
     try {
       const commit = await fetchSource(parseSource(entry.source), tmpDir);
-      const result = install(name, tmpDir, outPaths, { gitignore });
+      // For blob sources, the fetcher writes a single file into tmpDir.
+      // Pass the file path directly so classifySource sees a file, not a directory.
+      const isBlob = entry.source.includes("/blob/");
+      let installSrc = tmpDir;
+      if (isBlob) {
+        const files = fs.readdirSync(tmpDir);
+        if (files.length === 1 && files[0] !== undefined) {
+          installSrc = path.join(tmpDir, files[0]);
+        }
+      }
+      const result = install(name, installSrc, outPaths, {
+        gitignore,
+      });
       for (const p of result.managedPaths) {
         newSyncPaths.push(toRootRelative(projectRoot, p));
       }

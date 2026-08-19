@@ -56,13 +56,6 @@ export interface InstallOptions {
   /** @deprecated retained for backwards compat; ignored. */
   gitignore?: boolean;
   preservePaths?: string[];
-  /**
-   * When true, a single-file-in-dir source is treated as a folder
-   * (preserving the user's local structure). Default false — remote
-   * sources fetched into a temp dir unwrap to a single flat-file
-   * install.
-   */
-  preserveFolderForSingleFile?: boolean;
 }
 
 export interface InstallResult {
@@ -81,60 +74,32 @@ export interface InstallResult {
  * the unwrap heuristic fires only when the source dir contains
  * EXACTLY ONE file AND NO subdirectories.
  */
-export function classifySource(
-  srcPath: string,
-  preserveFolderForSingleFile: boolean,
-): {
+export function classifySource(srcPath: string): {
   isFileInstall: boolean;
   effectiveSrc: string;
   ext: string;
 } {
-  const stat = fs.statSync(srcPath);
-  if (stat.isFile()) {
+  if (fs.statSync(srcPath).isFile()) {
     return {
       isFileInstall: true,
       effectiveSrc: srcPath,
       ext: path.extname(srcPath),
     };
   }
-  if (preserveFolderForSingleFile) {
-    return { isFileInstall: false, effectiveSrc: srcPath, ext: "" };
-  }
-  const entries = fs.readdirSync(srcPath, { withFileTypes: true });
-  const fileNames = entries.filter((e) => e.isFile()).map((e) => e.name);
-  const dirNames = entries.filter((e) => e.isDirectory()).map((e) => e.name);
-  if (fileNames.length === 1 && dirNames.length === 0) {
-    const single = fileNames[0];
-    if (single === undefined) {
-      throw new Error("classifySource: length === 1 but first element missing");
-    }
-    const singleFile = path.join(srcPath, single);
-    return {
-      isFileInstall: true,
-      effectiveSrc: singleFile,
-      ext: path.extname(singleFile),
-    };
-  }
-  return { isFileInstall: false, effectiveSrc: srcPath, ext: "" };
+  return {
+    isFileInstall: false,
+    effectiveSrc: srcPath,
+    ext: "",
+  };
 }
 
-/**
- * Install an entry from a source path into one or more output paths.
- * Returns the install name and the absolute paths of files/dirs that
- * were actually created (or refreshed) on disk. Callers collect those
- * paths into `.vulyk` so the next `vulyk sync`/`agents` can
- * compute set-difference cleanups.
- */
 export function install(
   packageName: string,
   srcPath: string,
   outputPaths: string[],
   opts: InstallOptions = {},
 ): InstallResult {
-  const { isFileInstall, effectiveSrc, ext } = classifySource(
-    srcPath,
-    opts.preserveFolderForSingleFile ?? false,
-  );
+  const { isFileInstall, effectiveSrc, ext } = classifySource(srcPath);
 
   const installName = isFileInstall
     ? packageName

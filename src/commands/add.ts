@@ -179,7 +179,6 @@ function installEntry(
     {
       gitignore,
       preservePaths,
-      preserveFolderForSingleFile: sourceIsLocal,
     },
   );
   for (const abs of managedPaths) {
