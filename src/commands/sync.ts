@@ -2,7 +2,11 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as fs from "node:fs";
 import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
-import { parseSource, fetchSource } from "../lib/fetcher.js";
+import {
+  parseSource,
+  fetchSource,
+  resolveFetchedInstallSource,
+} from "../lib/fetcher.js";
 import { install, uninstall } from "../lib/installer.js";
 import {
   getEntry,
@@ -75,16 +79,7 @@ async function syncEntry(
     }
     try {
       const commit = await fetchSource(parseSource(entry.source), tmpDir);
-      // For blob sources, the fetcher writes a single file into tmpDir.
-      // Pass the file path directly so classifySource sees a file, not a directory.
-      const isBlob = entry.source.includes("/blob/");
-      let installSrc = tmpDir;
-      if (isBlob) {
-        const files = fs.readdirSync(tmpDir);
-        if (files.length === 1 && files[0] !== undefined) {
-          installSrc = path.join(tmpDir, files[0]);
-        }
-      }
+      const installSrc = resolveFetchedInstallSource(entry.source, tmpDir);
       const result = install(name, installSrc, outPaths, {
         gitignore,
       });

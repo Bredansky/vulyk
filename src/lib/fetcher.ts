@@ -18,6 +18,23 @@ export interface UrlResolvedSource {
 
 export type ResolvedSource = GitResolvedSource | UrlResolvedSource;
 
+/**
+ * GitHub blob fetches are written as one file inside the temporary fetch
+ * directory. Pass that file to the installer so a single-file entry remains
+ * a flat managed file rather than becoming a directory named after the entry.
+ */
+export function resolveFetchedInstallSource(
+  specifier: string,
+  tmpDir: string,
+): string {
+  if (!specifier.includes("/blob/")) return tmpDir;
+
+  const entries = fs.readdirSync(tmpDir, { withFileTypes: true });
+  if (entries.length !== 1 || !entries[0]?.isFile()) return tmpDir;
+
+  return path.join(tmpDir, entries[0].name);
+}
+
 export function refreshGitRepoCache(repoCache: string): void {
   execFileSync(
     "git",

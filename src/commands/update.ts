@@ -7,6 +7,7 @@ import {
   parseSource,
   fetchSource,
   ensureGitRepoCache,
+  resolveFetchedInstallSource,
   type GitResolvedSource,
 } from "../lib/fetcher.js";
 import { install } from "../lib/installer.js";
@@ -83,13 +84,23 @@ async function updateEntry(
       );
       baseResolved.ref = latestCommit;
       await fetchSource(baseResolved, tmpDir);
-      install(name, tmpDir, outPaths, { gitignore });
+      install(
+        name,
+        resolveFetchedInstallSource(entry.source, tmpDir),
+        outPaths,
+        { gitignore },
+      );
       fs.rmSync(tmpDir, { recursive: true, force: true });
       normalizedSource = pinSpecifier(baseSpecifier, latestCommit);
     } else {
       log.print(`  ${color.blue(name)} ${color.dim("refreshing direct URL")}`);
       await fetchSource(resolved, tmpDir);
-      install(name, tmpDir, outPaths, { gitignore });
+      install(
+        name,
+        resolveFetchedInstallSource(entry.source, tmpDir),
+        outPaths,
+        { gitignore },
+      );
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 
