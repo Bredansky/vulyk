@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { writeTextFile } from "./text.js";
 
 const VULYK_FILE = ".vulyk";
 
@@ -49,7 +50,7 @@ export function writeState(dir: string, state: VulykState): void {
     .sort()
     .map((p) => `\u{1F41D} ${p}`);
   const out = [...agentLines, ...syncLines];
-  fs.writeFileSync(tmp, out.join("\n") + (out.length ? "\n" : ""));
+  writeTextFile(tmp, out.join("\n") + (out.length ? "\n" : ""));
   fs.renameSync(tmp, f);
 }
 

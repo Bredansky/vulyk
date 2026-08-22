@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ManifestSchema, type Manifest } from "../types.js";
+import { writeTextFile } from "./text.js";
 
 export const MANIFEST_FILE = "vulyk.json";
 
@@ -30,7 +31,7 @@ export function readManifest(filePath: string): Manifest {
 
 export function writeManifest(filePath: string, manifest: Manifest): void {
   const tmp = `${filePath}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(manifest, null, 2)}\n`);
+  writeTextFile(tmp, `${JSON.stringify(manifest, null, 2)}\n`);
   fs.renameSync(tmp, filePath);
 }
 

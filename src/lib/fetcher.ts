@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { execFileSync, execSync } from "node:child_process";
 import { getRepoCachePath } from "./cache.js";
+import { writeTextFile } from "./text.js";
 
 export interface GitResolvedSource {
   kind: "git";
@@ -139,7 +140,7 @@ function fetchGitSource(resolved: GitResolvedSource, destDir: string): string {
           `git --git-dir="${repoCache}" show "${archiveTarget}"`,
           { encoding: "utf8", stdio: "pipe" },
         );
-        fs.writeFileSync(path.join(destDir, fileName), content);
+        writeTextFile(path.join(destDir, fileName), content);
         return commit;
       }
     } catch {
@@ -234,7 +235,7 @@ async function fetchUrlSource(
   const outputPath = path.join(destDir, fileName);
 
   if (contentType?.includes("markdown") || fileName.endsWith(".md")) {
-    fs.writeFileSync(outputPath, await response.text());
+    writeTextFile(outputPath, await response.text());
     return null;
   }
 

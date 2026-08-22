@@ -7,6 +7,7 @@ import {
   resolveAgents,
   resolveGitignoreGenerated,
 } from "./groups.js";
+import { writeTextFile } from "./text.js";
 
 const MARKER_START = "# managed by vulyk";
 const MARKER_END = "# end vulyk";
@@ -43,14 +44,14 @@ export function updateRootGitignore(entries: string[]): void {
 
   if (entries.length === 0) {
     const result = withoutBlock.length > 0 ? `${withoutBlock}\n` : "";
-    if (result !== existing) fs.writeFileSync(gitignorePath, result);
+    if (result !== existing) writeTextFile(gitignorePath, result);
     return;
   }
 
   const block = `${MARKER_START}\n${entries.join("\n")}\n${MARKER_END}`;
   const result =
     withoutBlock.length > 0 ? `${withoutBlock}\n\n${block}\n` : `${block}\n`;
-  fs.writeFileSync(gitignorePath, result);
+  writeTextFile(gitignorePath, result);
 }
 
 export function getRootGitignoreEntries(): string[] {

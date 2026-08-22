@@ -7,6 +7,7 @@ import { readState, writeState } from "../lib/state.js";
 import { cleanupStale } from "../lib/cleanup.js";
 import { getDocSourcePath, getDocTitle } from "../lib/docs.js";
 import { refreshGitignore } from "../lib/gitignore.js";
+import { writeTextFile } from "../lib/text.js";
 import type { Manifest } from "../types.js";
 
 function getTargetDir(projectRoot: string, target: string): string {
@@ -117,14 +118,14 @@ function writeComposedAgentFiles(
       existing = fs.readFileSync(agentPath, "utf8");
     }
     if (existing !== desired) {
-      fs.writeFileSync(agentPath, desired);
+      writeTextFile(agentPath, desired);
     }
     newAgentPaths.push(toRootRelative(projectRoot, agentPath));
   }
 
   for (const { agentPath, body } of secondaryWrites) {
     fs.mkdirSync(path.dirname(agentPath), { recursive: true });
-    fs.writeFileSync(agentPath, body);
+    writeTextFile(agentPath, body);
     newAgentPaths.push(toRootRelative(projectRoot, agentPath));
   }
 }

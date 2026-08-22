@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { copyFilePreservingBinary } from "./text.js";
 // NOTE: this module intentionally does NOT touch any per-directory marker
 // file or the root .gitignore. The root .gitignore is owned exclusively
 // by `vulyk sync` (via refreshGitignore). What this install DOES emit is
@@ -35,7 +36,7 @@ function copyDirCollecting(src: string, dest: string): void {
       fs.mkdirSync(destPath, { recursive: true });
       copyDirCollecting(srcPath, destPath);
     } else {
-      fs.copyFileSync(srcPath, destPath);
+      copyFilePreservingBinary(srcPath, destPath);
     }
   }
 }
@@ -118,7 +119,7 @@ export function install(
 
       fs.mkdirSync(resolved, { recursive: true });
       if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
-      fs.copyFileSync(effectiveSrc, dest);
+      copyFilePreservingBinary(effectiveSrc, dest);
       managedPaths.push(dest);
     } else {
       const dest = path.join(resolved, installName);
