@@ -128,7 +128,9 @@ export function computeExpectedGitignoreEntries(
       if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
         const files = fs.readdirSync(resolved);
         for (const file of files) {
-          if (file === ".vulyk") continue;
+          if (file === "state.json" || file === "cache" || file === "tmp") {
+            continue;
+          }
           const ext = path.extname(file);
           const base = path.basename(file, ext);
           if (base === name) {
@@ -153,7 +155,7 @@ export function computeExpectedGitignoreEntries(
     }
   }
 
-  return [...new Set([".vulyk", ...entries])].sort();
+  return [...new Set([".vulyk/cache/", ".vulyk/tmp/", ...entries])].sort();
 }
 
 /**
@@ -167,8 +169,6 @@ export function refreshGitignore(
   projectRoot: string,
 ): void {
   const entries = computeExpectedGitignoreEntries(manifest, projectRoot);
-  // `**/.vulyk` is no longer in the managed block: per-directory markers
-  // were dropped in favour of a single committed `.vulyk`
-  // at the project root (see src/lib/state.ts).
+  // Generated state and cache are ignored by the project.
   updateRootGitignore(entries);
 }

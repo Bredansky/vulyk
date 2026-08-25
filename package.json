@@ -17,6 +17,14 @@
     "type": "git",
     "url": "git+https://github.com/Bredansky/vulyk.git"
   },
+  "exports": {
+    ".": "./dist/index.js",
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./package.json": "./package.json"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -29,7 +37,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "test": "node --import tsx --test tests/**/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 tests/**/*.test.ts",
     "typecheck": "tsc",
     "dev": "tsx src/index.ts",
     "fix": "eslint . --fix --cache",
@@ -43,6 +51,7 @@
   },
   "dependencies": {
     "commander": "^12.0.0",
+    "tsx": "^4.21.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {

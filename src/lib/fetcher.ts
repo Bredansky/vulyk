@@ -1,8 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
 import { execFileSync, execSync } from "node:child_process";
-import { getRepoCachePath } from "./cache.js";
+import { getProjectTempPath, getRepoCachePath } from "./cache.js";
 import { writeTextFile } from "./text.js";
 
 export interface GitResolvedSource {
@@ -148,10 +147,13 @@ function fetchGitSource(resolved: GitResolvedSource, destDir: string): string {
     }
   }
 
+  const archiveDir = getProjectTempPath("archives");
+  fs.mkdirSync(archiveDir, { recursive: true });
+
   if (process.platform === "win32") {
     const archivePath = path.join(
-      os.tmpdir(),
-      `vulyk-${String(Date.now())}.zip`,
+      archiveDir,
+      `vulyk-${String(process.pid)}-${String(Date.now())}.zip`,
     );
     execFileSync(
       "git",
@@ -180,7 +182,7 @@ function fetchGitSource(resolved: GitResolvedSource, destDir: string): string {
     fs.rmSync(archivePath, { force: true });
   } else {
     const archivePath = path.join(
-      os.tmpdir(),
+      archiveDir,
       `vulyk-${String(process.pid)}-${String(Date.now())}.tar`,
     );
     try {

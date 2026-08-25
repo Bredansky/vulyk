@@ -24,7 +24,7 @@ program
 
 program
   .command("init")
-  .description("Create a vulyk.json in the current directory")
+  .description("Create a vulyk.config.ts in the current directory")
   .action(initCommand);
 
 program

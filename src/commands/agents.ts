@@ -153,7 +153,7 @@ function writeComposedAgentFiles(
  * `targets`. Does NOT install from sources — that's `vulyk sync`. Run
  * `vulyk sync` first, then `vulyk agents`.
  *
- * Tracks the produced agent file paths in `.vulyk`'s
+ * Tracks the produced agent file paths in local `vulyk` state's
  * `agentPaths` array; previous agentPaths that are no longer produced
  * are removed.
  */
@@ -164,7 +164,7 @@ export function agentsCommand(
 ): void {
   const manifestPath = findManifest();
   if (!manifestPath) {
-    log.error("No vulyk.json found.");
+    log.error("No vulyk.config.ts found.");
     process.exit(1);
   }
 

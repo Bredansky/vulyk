@@ -1,5 +1,4 @@
 import * as path from "node:path";
-import * as os from "node:os";
 import * as fs from "node:fs";
 import { execSync } from "node:child_process";
 import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
@@ -18,6 +17,7 @@ import {
   resolveGitignoreGenerated,
 } from "../lib/groups.js";
 import type { Manifest } from "../types.js";
+import { getProjectTempPath } from "../lib/cache.js";
 
 function fetchLatest(repoUrl: string, ref: string): string {
   const repoCache = ensureGitRepoCache(repoUrl);
@@ -55,7 +55,7 @@ async function updateEntry(
 
   const outPaths = resolveOutputPaths(manifest, name);
   const gitignore = resolveGitignoreGenerated(manifest, name);
-  const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
+  const tmpDir = getProjectTempPath(name);
   if (fs.existsSync(tmpDir)) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -116,7 +116,7 @@ async function updateEntry(
 export async function updateCommand(name?: string): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
-    log.error("No vulyk.json found.");
+    log.error("No vulyk.config.ts found.");
     process.exit(1);
   }
 

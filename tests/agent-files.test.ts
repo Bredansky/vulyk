@@ -31,8 +31,8 @@ function makeTempProject(): string {
   return dir;
 }
 
-function writeJson(p: string, value: unknown): void {
-  fs.writeFileSync(p, `${JSON.stringify(value, null, 2)}\n`);
+function writeConfig(p: string, value: unknown): void {
+  fs.writeFileSync(p, `export default ${JSON.stringify(value, null, 2)};\n`);
 }
 
 void test("agentsCommand: default primary agent file is AGENTS.md with summary section", () => {
@@ -51,7 +51,7 @@ void test("agentsCommand: default primary agent file is AGENTS.md with summary s
       },
     },
   };
-  writeJson(path.join(projectRoot, "vulyk.json"), manifest);
+  writeConfig(path.join(projectRoot, "vulyk.config.ts"), manifest);
 
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
@@ -87,7 +87,7 @@ void test("agentsCommand: secondary agent chains to primary with @<primaryPath>"
       },
     },
   };
-  writeJson(path.join(projectRoot, "vulyk.json"), manifest);
+  writeConfig(path.join(projectRoot, "vulyk.config.ts"), manifest);
 
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
@@ -122,7 +122,7 @@ void test("agentsCommand: shared AGENTS.md composes multiple sections in source 
       },
     },
   };
-  writeJson(path.join(projectRoot, "vulyk.json"), manifest);
+  writeConfig(path.join(projectRoot, "vulyk.config.ts"), manifest);
 
   const initialCwd = process.cwd();
   process.chdir(projectRoot);

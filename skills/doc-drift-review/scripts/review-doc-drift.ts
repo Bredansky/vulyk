@@ -390,7 +390,7 @@ function buildDocReviewBundle(
           kind: "review_scope",
           target: inputPath,
           reason:
-            "Use a tracked doc from vulyk.json or add this doc to the vulyk doc graph before running reverse review.",
+            "Use a tracked doc from vulyk.config.ts or add this doc to the vulyk doc graph before running reverse review.",
         },
       ],
       metadata: {

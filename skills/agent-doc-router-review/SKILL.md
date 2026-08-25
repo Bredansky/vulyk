@@ -16,7 +16,7 @@ Use this skill when the problem is not the doc body itself, but whether an agent
 Read:
 
 - `AGENTS.md`
-- `vulyk.json`
+- `vulyk.config.ts`
 - headings or short summaries of referenced docs
 
 Prefer `rg -n '^#|^Full documentation:' AGENTS.md docs/**/*.md` and targeted `sed` reads over loading every doc in full.
@@ -53,7 +53,7 @@ If new agents cannot be spawned because of limits, reuse existing agents with `i
 
 ### 4. Tighten descriptions
 
-Update `vulyk.json` descriptions, not generated `AGENTS.md`, unless the repo intentionally hand-edits `AGENTS.md`.
+Update `vulyk.config.ts` descriptions, not generated `AGENTS.md`, unless the repo intentionally hand-edits `AGENTS.md`.
 
 Good descriptions answer "when should I open this?" Examples:
 

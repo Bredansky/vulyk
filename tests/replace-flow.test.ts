@@ -9,10 +9,10 @@ import { applyCleanupDelta, readState, writeState } from "../src/lib/state.js";
 // do internally (applyCleanupDelta + writeState roundtrip) without depending on remote
 // registry / source downloads. Pure state-machine coverage.
 
-void test("replace-flow: removing alpha + adding beta cleans stale files, updates .vulyk, preserves agentPaths", () => {
+void test("replace-flow: removing alpha + adding beta cleans stale files, updates .vulyk/state.json, preserves agentPaths", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-rf-state-"));
   try {
-    // Setup: alpha on disk + in .vulyk.
+    // Setup: alpha on disk + in .vulyk/state.json.
     fs.mkdirSync(path.join(root, "docs/test/alpha"), { recursive: true });
     fs.writeFileSync(
       path.join(root, "docs/test/alpha/file.md"),
@@ -29,7 +29,7 @@ void test("replace-flow: removing alpha + adding beta cleans stale files, update
       const st = readState(root);
       assert.ok(
         st.syncPaths.includes("docs/test/alpha/file.md"),
-        "alpha recorded in .vulyk",
+        "alpha recorded in .vulyk/state.json",
       );
       assert.ok(
         fs.existsSync(path.join(root, "docs/test/alpha/file.md")),
@@ -39,7 +39,7 @@ void test("replace-flow: removing alpha + adding beta cleans stale files, update
 
     // Simulate "manifest removes alpha, adds beta" — the two halves of replace-flow:
     //   1) applyCleanupDelta(prev, curr-now-empty) removes old alpha from disk.
-    //   2) writeState(curr-with-beta) writes the new state to .vulyk.
+    //   2) writeState(curr-with-beta) writes the new state to .vulyk/state.json.
     applyCleanupDelta(root, ["docs/test/alpha/file.md"], []);
     fs.mkdirSync(path.join(root, "docs/test/beta"), { recursive: true });
     fs.writeFileSync(
@@ -66,24 +66,30 @@ void test("replace-flow: removing alpha + adding beta cleans stale files, update
     assert.deepEqual(
       st.syncPaths,
       ["docs/test/beta/file.md"],
-      ".vulyk.syncPaths reflects replacement",
+      ".vulyk/state.json.syncPaths reflects replacement",
     );
     assert.deepEqual(
       st.agentPaths,
       ["AGENTS.md", "CLAUDE.md"],
-      ".vulyk.agentPaths preserved (not touched by sync)",
+      ".vulyk/state.json.agentPaths preserved (not touched by sync)",
     );
 
-    // .vulyk file exists and is well-formed.
-    const text = fs.readFileSync(path.join(root, ".vulyk"), "utf8");
+    // .vulyk/state.json file exists and is well-formed.
+    const text = fs.readFileSync(
+      path.join(root, ".vulyk", "state.json"),
+      "utf8",
+    );
     assert.ok(
       text.includes("\u{1F41D} docs/test/beta/file.md"),
-      ".vulyk has \ud83d\udc1d line for beta",
+      ".vulyk/state.json has \ud83d\udc1d line for beta",
     );
-    assert.ok(!text.includes("alpha"), ".vulyk has no alpha reference");
+    assert.ok(
+      !text.includes("alpha"),
+      ".vulyk/state.json has no alpha reference",
+    );
     assert.ok(
       text.includes("\u{1F36F} AGENTS.md"),
-      ".vulyk preserves \ud83c\udf6f AGENTS.md",
+      ".vulyk/state.json preserves \ud83c\udf6f AGENTS.md",
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -101,7 +107,7 @@ void test("applyCleanupDelta refuses stale paths that resolve outside project ro
       "utf8",
     );
 
-    // Inject a path-traversal entry into .vulyk (poison -> simulates attacker or copy-paste corruption).
+    // Inject a path-traversal entry into .vulyk/state.json (poison -> simulates attacker or copy-paste corruption).
     writeState(root, {
       syncPaths: [
         "docs/test/alpha/file.md",
@@ -128,10 +134,13 @@ void test("applyCleanupDelta refuses stale paths that resolve outside project ro
       "legitimate alpha removed",
     );
 
-    // Final writeState with empty entries clears .vulyk cleanly;
+    // Final writeState with empty entries clears .vulyk/state.json cleanly;
     // the traversal entry must NEVER re-emerge.
     writeState(root, { syncPaths: [], agentPaths: [] });
-    const text = fs.readFileSync(path.join(root, ".vulyk"), "utf8");
+    const text = fs.readFileSync(
+      path.join(root, ".vulyk", "state.json"),
+      "utf8",
+    );
     assert.ok(
       !text.includes("../../etc/passwd-shaped-relative"),
       "traversal entry never re-emitted",
@@ -141,7 +150,7 @@ void test("applyCleanupDelta refuses stale paths that resolve outside project ro
   }
 });
 
-void test("empty-manifest after populated run: writeState({sync:[], agent:[]}) roundtrips to empty .vulyk", () => {
+void test("empty-manifest after populated run: writeState({sync:[], agent:[]}) roundtrips to empty .vulyk/state.json", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-empty-state-"));
   try {
     fs.mkdirSync(path.join(root, "docs/test/gamma"), { recursive: true });
@@ -170,10 +179,13 @@ void test("empty-manifest after populated run: writeState({sync:[], agent:[]}) r
     const after = readState(root);
     assert.deepEqual(after.syncPaths, [], "empty after removal");
     assert.deepEqual(after.agentPaths, [], "agentPaths empty after removal");
-    const text = fs.readFileSync(path.join(root, ".vulyk"), "utf8");
+    const text = fs.readFileSync(
+      path.join(root, ".vulyk", "state.json"),
+      "utf8",
+    );
     assert.ok(
       text === "" || text === "\n",
-      ".vulyk empty after writeState({sync:[], agent:[]})",
+      ".vulyk/state.json empty after writeState({sync:[], agent:[]})",
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -190,7 +202,10 @@ void test("writeState preserves sort-within-kind + agents-first-then-docs orderi
         agentPaths: ["ZZ.md", "AA.md", "MM.md"],
       });
     }
-    const text = fs.readFileSync(path.join(root, ".vulyk"), "utf8");
+    const text = fs.readFileSync(
+      path.join(root, ".vulyk", "state.json"),
+      "utf8",
+    );
     const agentLines = text
       .split("\n")
       .filter(

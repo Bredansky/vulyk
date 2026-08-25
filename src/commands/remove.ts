@@ -4,14 +4,14 @@ import { log } from "../lib/log.js";
 export function removeCommand(name: string): void {
   const manifestPath = findManifest();
   if (!manifestPath) {
-    log.error("No vulyk.json found. Run `vulyk init` first.");
+    log.error("No vulyk.config.ts found. Run `vulyk init` first.");
     process.exit(1);
   }
 
   const manifest = readManifest(manifestPath);
 
   if (!manifest.entries[name]) {
-    log.error(`"${name}" not found in vulyk.json.`);
+    log.error(`"${name}" not found in vulyk.config.ts.`);
     process.exit(1);
   }
 

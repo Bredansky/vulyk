@@ -1,7 +1,6 @@
 import * as path from "node:path";
-import * as os from "node:os";
 import * as fs from "node:fs";
-import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
+import { findManifest, readManifest } from "../lib/manifest.js";
 import {
   parseSource,
   fetchSource,
@@ -16,9 +15,12 @@ import {
 } from "../lib/groups.js";
 import { refreshGitignore } from "../lib/gitignore.js";
 import { log } from "../lib/log.js";
-import { pinSpecifier } from "../lib/specifier.js";
 import { cleanupStale } from "../lib/cleanup.js";
+import { pinSpecifier } from "../lib/specifier.js";
 import { readState, writeState } from "../lib/state.js";
+import { githubLockKey, readLockfile, writeLockfile } from "../lib/lockfile.js";
+import { getProjectTempPath } from "../lib/cache.js";
+import { resolveMarkdownLinks } from "../lib/markdown-links.js";
 import type { Manifest } from "../types.js";
 
 function isLocalSource(projectRoot: string, source: string): boolean {
@@ -41,6 +43,7 @@ async function syncEntry(
   projectRoot: string,
   manifest: Manifest,
   newSyncPaths: string[],
+  lockfile: ReturnType<typeof readLockfile>,
 ): Promise<string | null | undefined> {
   const entry = getEntry(manifest, name);
   if (!entry) return undefined;
@@ -61,8 +64,6 @@ async function syncEntry(
   const gitignore = explicitGitignore;
   const sourceIsLocal = isLocalSource(projectRoot, entry.source);
 
-  let updatedSource: string | undefined;
-
   if (sourceIsLocal) {
     const sourcePath = path.resolve(projectRoot, entry.source);
     const result = install(name, sourcePath, outPaths, {
@@ -73,12 +74,24 @@ async function syncEntry(
       newSyncPaths.push(toRootRelative(projectRoot, p));
     }
   } else {
-    const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", name);
+    const tmpDir = getProjectTempPath(name);
     if (fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
     try {
-      const commit = await fetchSource(parseSource(entry.source), tmpDir);
+      const resolved = parseSource(entry.source);
+      let sourceToFetch = entry.source;
+      if (resolved.kind === "git" && !/^[0-9a-f]{40}$/i.test(resolved.ref)) {
+        const parts = new URL(entry.source).pathname.split("/").filter(Boolean);
+        const owner = parts[0];
+        const repo = parts[1];
+        const locked =
+          owner && repo
+            ? lockfile.github[githubLockKey(owner, repo, resolved.ref)]
+            : undefined;
+        if (locked) sourceToFetch = pinSpecifier(entry.source, locked);
+      }
+      const commit = await fetchSource(parseSource(sourceToFetch), tmpDir);
       const installSrc = resolveFetchedInstallSource(entry.source, tmpDir);
       const result = install(name, installSrc, outPaths, {
         gitignore,
@@ -86,10 +99,40 @@ async function syncEntry(
       for (const p of result.managedPaths) {
         newSyncPaths.push(toRootRelative(projectRoot, p));
       }
+      if (
+        manifest.linkResolution &&
+        resolved.kind === "git" &&
+        resolved.subPath?.toLowerCase().endsWith(".md")
+      ) {
+        const installedPath = result.managedPaths[0];
+        if (installedPath?.toLowerCase().endsWith(".md")) {
+          const installedBody = fs.readFileSync(installedPath, "utf8");
+          const resolvedMarkdown = resolveMarkdownLinks(
+            installedBody,
+            sourceToFetch,
+            installedPath,
+            projectRoot,
+            manifest.linkResolution,
+            lockfile,
+            0,
+          );
+          fs.writeFileSync(installedPath, resolvedMarkdown.markdown);
+          for (const linkedPath of resolvedMarkdown.managedPaths) {
+            newSyncPaths.push(toRootRelative(projectRoot, linkedPath));
+          }
+        }
+      }
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      updatedSource = commit
-        ? pinSpecifier(entry.source, commit)
-        : entry.source;
+      if (commit) {
+        const sourceUrl = new URL(entry.source);
+        const parts = sourceUrl.pathname.split("/").filter(Boolean);
+        const owner = parts[0];
+        const repo = parts[1];
+        const ref = parts[3];
+        if (owner && repo && ref && !/^[0-9a-f]{40}$/i.test(ref)) {
+          lockfile.github[githubLockKey(owner, repo, ref)] = commit;
+        }
+      }
     } catch (err) {
       log.error(
         `Failed to sync "${name}": ${err instanceof Error ? err.message : String(err)}`,
@@ -99,49 +142,45 @@ async function syncEntry(
   }
 
   log.success(name);
-  return updatedSource;
+  return undefined;
 }
 
 /**
  * Sync every enabled entry: install from source, populate
- * `.vulyk`, prune stale managed files, refresh the gitignore
+ * local generated state, prune stale managed files, refresh the gitignore
  * block.
  */
 export async function syncCommand(): Promise<boolean> {
   const manifestPath = findManifest();
   if (!manifestPath) {
-    log.error("No vulyk.json found.");
+    log.error("No vulyk.config.ts found.");
     process.exit(1);
   }
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
+  const lockfile = readLockfile(projectRoot);
 
-  // Read the previous state. `readState` transparently migrates any
-  // legacy per-directory `.vulyk` markers on first run.
+  // Read local generated-file ownership state.
   const previousState = readState(projectRoot);
 
   log.blue("\nSyncing entries:");
-  let changed = false;
   let failed = false;
   const newSyncPaths: string[] = [];
 
   for (const name of Object.keys(manifest.entries)) {
     const entry = getEntry(manifest, name);
     if (!entry) continue;
-    const updatedSource = await syncEntry(
+    const syncResult = await syncEntry(
       name,
       projectRoot,
       manifest,
       newSyncPaths,
+      lockfile,
     );
-    if (updatedSource === null) {
+    if (syncResult === null) {
       failed = true;
       continue;
-    }
-    if (updatedSource && updatedSource !== entry.source) {
-      manifest.entries[name] = { ...entry, source: updatedSource };
-      changed = true;
     }
   }
 
@@ -157,14 +196,9 @@ export async function syncCommand(): Promise<boolean> {
   // cleanup happens inside applyCleanupDelta).
   cleanupStale(projectRoot, previousState.syncPaths, newSyncPaths);
 
-  // Persist manifest first (the source of INTENT) when entries were
-  // re-pinned, then write the lockfile (cleanup truth). If writeState
-  // were to fail AFTER writeManifest succeeded, the next `vulyk sync`
-  // would see the manifest's entries, re-install them (idempotent), and
-  // re-record the paths; the inverted order would silently prune the
-  // just-installed entries on the next sync. Matches the order in add.ts.
+  // Persist the resolved GitHub refs separately from executable config.
 
-  if (changed) writeManifest(manifestPath, manifest);
+  writeLockfile(projectRoot, lockfile);
 
   // We deliberately preserve agentPaths so a subsequent `vulyk agents`
   // can reconcile against what it produces.

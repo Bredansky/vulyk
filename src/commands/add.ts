@@ -1,8 +1,8 @@
 import * as path from "node:path";
-import * as os from "node:os";
 import * as fs from "node:fs";
 import { findManifest, readManifest, writeManifest } from "../lib/manifest.js";
 import { parseSource, fetchSource } from "../lib/fetcher.js";
+import { getProjectTempPath } from "../lib/cache.js";
 import { install } from "../lib/installer.js";
 import { log } from "../lib/log.js";
 import {
@@ -132,7 +132,7 @@ function resolveGroupForSource(
 
 /**
  * Convert an absolute path to a root-relative forward-slash string used
- * for `.vulyk` entries. Throws if `abs` is outside `root` —
+ * for `vulyk` entries. Throws if `abs` is outside `root` —
  * install() should never produce such paths, but if it ever does we want
  * to surface that immediately rather than silently corrupting the lock.
  */
@@ -299,7 +299,7 @@ async function addRemote(
   render: RenderMode | undefined,
 ): Promise<void> {
   log.info(`Fetching ${nameHint}...`);
-  const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", nameHint);
+  const tmpDir = getProjectTempPath(nameHint);
   if (fs.existsSync(tmpDir)) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -361,7 +361,7 @@ export async function addCommand(
 ): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
-    log.error("No vulyk.json found. Run `vulyk init` first.");
+    log.error("No vulyk.config.ts found. Run `vulyk init` first.");
     process.exit(1);
   }
 
@@ -373,7 +373,7 @@ export async function addCommand(
     specifier.split("/").filter(Boolean).pop()?.replace(/@.*$/, "") ??
     specifier;
 
-  // Every install `add` produces is recorded in `.vulyk`.
+  // Every install `add` produces is recorded in the local `vulyk` state file.
   // We merge the new paths with whatever `sync` / `agents` previously
   // wrote so subsequent cleanup can rely on the union of them.
   const previousState = readState(projectRoot);

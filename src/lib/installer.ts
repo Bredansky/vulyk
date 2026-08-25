@@ -6,7 +6,7 @@ import { copyFilePreservingBinary } from "./text.js";
 // file or the root .gitignore. The root .gitignore is owned exclusively
 // by `vulyk sync` (via refreshGitignore). What this install DOES emit is
 // the absolute paths of files/dirs it created, returned in InstallResult
-// — callers feed that into .vulyk so a subsequent sync can
+// — callers feed that into the local `vulyk` state so a subsequent sync can
 // detect stale entries via state.applyCleanupDelta(.
 export function resolvePath(p: string): string {
   return p.startsWith("~")

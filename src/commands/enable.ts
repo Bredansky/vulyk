@@ -5,14 +5,14 @@ import { getEntry, setEnabled } from "../lib/groups.js";
 export function enableCommand(name: string): void {
   const manifestPath = findManifest();
   if (!manifestPath) {
-    log.error("No vulyk.json found.");
+    log.error("No vulyk.config.ts found.");
     process.exit(1);
   }
 
   const manifest = readManifest(manifestPath);
   const entry = getEntry(manifest, name);
   if (!entry) {
-    log.error(`"${name}" not found in vulyk.json.`);
+    log.error(`"${name}" not found in vulyk.config.ts.`);
     process.exit(1);
   }
 

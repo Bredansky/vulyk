@@ -1,6 +1,6 @@
 // `cleanup.ts` used to walk the filesystem searching for per-directory
-// `.vulyk` markers. That mechanism is gone — .vulyk at the
-// project root is now the single source of truth.
+// generated state markers. The root `vulyk` file is the single local
+// source of truth.
 //
 // `cleanupStale` is preserved as a thin wrapper over
 // `state.applyCleanupDelta` so callers (sync.ts, the agents command,

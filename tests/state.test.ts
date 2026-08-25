@@ -24,7 +24,7 @@ void test("readState returns empty state when .vulyk does not exist", () => {
   const dir = tmpRoot();
   const r = readState(dir);
   assert.deepEqual(r, { syncPaths: [], agentPaths: [] });
-  assert.equal(fs.existsSync(path.join(dir, ".vulyk")), false);
+  assert.equal(fs.existsSync(path.join(dir, ".vulyk", "state.json")), false);
 });
 
 void test("writeState then readState roundtrips agent + sync paths", () => {
@@ -47,7 +47,7 @@ void test("writeState writes \u{1F36F}-lines first, \u{1F41D}-lines second, sort
     syncPaths: ["z.md", "a.md"],
     agentPaths: ["CLAUDE.md", "AGENTS.md"],
   });
-  const text = fs.readFileSync(path.join(dir, ".vulyk"), "utf8");
+  const text = fs.readFileSync(path.join(dir, ".vulyk", "state.json"), "utf8");
   assert.equal(
     text,
     "\u{1F36F} AGENTS.md\n\u{1F36F} CLAUDE.md\n\u{1F41D} a.md\n\u{1F41D} z.md\n",
@@ -57,9 +57,13 @@ void test("writeState writes \u{1F36F}-lines first, \u{1F41D}-lines second, sort
 void test("writeState is atomic (writes to .tmp then renames)", () => {
   const dir = tmpRoot();
   writeState(dir, { syncPaths: ["x"], agentPaths: [] });
-  assert.equal(fs.existsSync(path.join(dir, ".vulyk")), true, ".vulyk present");
   assert.equal(
-    fs.existsSync(path.join(dir, ".vulyk.tmp")),
+    fs.existsSync(path.join(dir, ".vulyk", "state.json")),
+    true,
+    ".vulyk present",
+  );
+  assert.equal(
+    fs.existsSync(path.join(dir, ".vulyk", "state.json.tmp")),
     false,
     "no stale .tmp",
   );
@@ -71,14 +75,15 @@ void test("writeState dedupes identical lines within + across kind", () => {
     syncPaths: ["dup.md", "dup.md"],
     agentPaths: ["X.md", "X.md", "Y.md"],
   });
-  const text = fs.readFileSync(path.join(dir, ".vulyk"), "utf8");
+  const text = fs.readFileSync(path.join(dir, ".vulyk", "state.json"), "utf8");
   assert.equal(text, "\u{1F36F} X.md\n\u{1F36F} Y.md\n\u{1F41D} dup.md\n");
 });
 
 void test("readState ignores lines without \u{1F36F} / \u{1F41D} prefix", () => {
   const dir = tmpRoot();
+  fs.mkdirSync(path.join(dir, ".vulyk"), { recursive: true });
   fs.writeFileSync(
-    path.join(dir, ".vulyk"),
+    path.join(dir, ".vulyk", "state.json"),
     "\u{1F36F} good\nbogus line\n\u{1F41D} also-good\n",
   );
   const r = readState(dir);
@@ -88,7 +93,11 @@ void test("readState ignores lines without \u{1F36F} / \u{1F41D} prefix", () => 
 
 void test("readState tolerates a corrupt .vulyk by returning empty state", () => {
   const dir = tmpRoot();
-  fs.writeFileSync(path.join(dir, ".vulyk"), "\xff\xfe\xfd garbage");
+  fs.mkdirSync(path.join(dir, ".vulyk"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, ".vulyk", "state.json"),
+    "\xff\xfe\xfd garbage",
+  );
   const r = readState(dir);
   assert.deepEqual(r, { syncPaths: [], agentPaths: [] });
 });
@@ -130,7 +139,10 @@ void test("writeState keeps both 🍯- and 🐝-prefixed lines even if the path 
       syncPaths: ["README.md"],
       agentPaths: ["README.md"],
     });
-    const text = fs.readFileSync(path.join(dir, ".vulyk"), "utf8");
+    const text = fs.readFileSync(
+      path.join(dir, ".vulyk", "state.json"),
+      "utf8",
+    );
     assert.equal(text, "\u{1F36F} README.md\n\u{1F41D} README.md\n");
     const round = readState(dir);
     assert.deepEqual(round, {

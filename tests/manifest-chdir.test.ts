@@ -27,7 +27,7 @@ void test("findManifest: chdirs to project root so resolvePath is correct from s
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-chdir-"));
   createdDirs.push(projectRoot);
   fs.writeFileSync(
-    path.join(projectRoot, "vulyk.json"),
+    path.join(projectRoot, "vulyk.config.ts"),
     '{"groups":{},"entries":{}}',
   );
   const subdir = path.join(projectRoot, "src", "components", "deep");

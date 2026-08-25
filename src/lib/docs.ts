@@ -195,7 +195,7 @@ export function findDocsForFile(filePath: string): {
   docs: FileDocMatch[];
 } {
   const manifestPath = findManifest();
-  if (!manifestPath) throw new Error("No vulyk.json found.");
+  if (!manifestPath) throw new Error("No vulyk.config.ts found.");
   const projectRoot = path.dirname(manifestPath);
   const manifest = readManifest(manifestPath);
 
@@ -253,7 +253,7 @@ export function findTargetsForDoc(docPath: string): {
   targets: DocTargetMatch[];
 } {
   const manifestPath = findManifest();
-  if (!manifestPath) throw new Error("No vulyk.json found.");
+  if (!manifestPath) throw new Error("No vulyk.config.ts found.");
   const projectRoot = path.dirname(manifestPath);
   const manifest = readManifest(manifestPath);
   const normalizedDocPath = normalizeRelative(

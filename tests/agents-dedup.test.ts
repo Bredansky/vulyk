@@ -1,6 +1,6 @@
 // Regression test for the bug where vulyk agents pushed the same
 // (entry × target × secondary agent) path multiple times into the
-// lockfile's agentPaths array, producing 10 CLAUDE.md entries
+// state file's agentPaths array, producing 10 CLAUDE.md entries
 // instead of 1 when 10 entries share `targets: ["."]`.
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -14,9 +14,13 @@ function makeTempProject(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-agents-dedup-"));
 }
 
-function writeJson(filePath: string, value: unknown): void {
+function writeConfig(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  fs.writeFileSync(
+    filePath,
+    `export default ${JSON.stringify(value, null, 2)};\n`,
+    "utf8",
+  );
 }
 
 function writeFile(filePath: string, body: string): void {
@@ -64,7 +68,7 @@ void test("agentsCommand dedups agentPaths when many entries share the same targ
       description: `Description for ${name}.`,
     };
   }
-  writeJson(path.join(projectRoot, "vulyk.json"), { groups, entries });
+  writeConfig(path.join(projectRoot, "vulyk.config.ts"), { groups, entries });
 
   // Write the doc file for each entry so computePrimaryContribution
   // finds the source and produces a contribution.

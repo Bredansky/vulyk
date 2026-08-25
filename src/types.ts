@@ -103,6 +103,16 @@ export const EntrySchema = z.object({
 
 export type Entry = z.infer<typeof EntrySchema>;
 
+// --- Linked Markdown configuration ---
+
+export const LinkResolutionSchema = z.object({
+  sharedOutputPath: z.string().default("docs/shared"),
+  sharedSourceRoot: z.string().optional(),
+  maxDepth: z.number().int().nonnegative().default(1),
+});
+
+export type LinkResolution = z.infer<typeof LinkResolutionSchema>;
+
 // --- Manifest: groups + entries + top-level fallbacks ---
 
 export const ManifestSchema = z.object({
@@ -118,6 +128,7 @@ export const ManifestSchema = z.object({
   gitIgnore: z.boolean().optional(),
   agents: z.array(AgentSchema).optional(),
   render: RenderModeSchema.optional(),
+  linkResolution: LinkResolutionSchema.optional(),
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;

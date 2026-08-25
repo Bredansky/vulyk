@@ -73,7 +73,7 @@ function isLocalSource(projectRoot: string, source: string): boolean {
 export function diffCommand(name?: string): void {
   const manifestPath = findManifest();
   if (!manifestPath) {
-    log.error("No vulyk.json found.");
+    log.error("No vulyk.config.ts found.");
     process.exit(1);
   }
 

@@ -11,7 +11,7 @@ function isLocalSource(projectRoot: string, source: string): boolean {
 export function listCommand(): void {
   const manifestPath = findManifest();
   if (!manifestPath) {
-    log.error("No vulyk.json found.");
+    log.error("No vulyk.config.ts found.");
     process.exit(1);
   }
 

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTextFile } from "./text.js";
 
-const VULYK_FILE = ".vulyk";
+const VULYK_STATE_FILE = path.join(".vulyk", "state.json");
 
 export interface VulykState {
   syncPaths: string[];
@@ -26,7 +26,7 @@ function parseLine(
 }
 
 export function readState(dir: string): VulykState {
-  const f = path.join(dir, VULYK_FILE);
+  const f = path.join(dir, VULYK_STATE_FILE);
   if (!fs.existsSync(f)) return emptyState();
   const text = fs.readFileSync(f, "utf8");
   const agentPaths: string[] = [];
@@ -41,7 +41,8 @@ export function readState(dir: string): VulykState {
 }
 
 export function writeState(dir: string, state: VulykState): void {
-  const f = path.join(dir, VULYK_FILE);
+  const f = path.join(dir, VULYK_STATE_FILE);
+  fs.mkdirSync(path.dirname(f), { recursive: true });
   const tmp = `${f}.tmp`;
   const agentLines = [...new Set(state.agentPaths)]
     .sort()

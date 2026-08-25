@@ -41,8 +41,8 @@ function makeTempProject(): string {
   return dir;
 }
 
-function writeJson(p: string, value: unknown): void {
-  fs.writeFileSync(p, `${JSON.stringify(value, null, 2)}\n`);
+function writeConfig(p: string, value: unknown): void {
+  fs.writeFileSync(p, `export default ${JSON.stringify(value, null, 2)};\n`);
 }
 
 function runAgents(projectRoot: string): void {
@@ -93,7 +93,7 @@ void test("agentsCommand: an embed entry writes the doc body instead of a pointe
       },
     },
   };
-  writeJson(path.join(projectRoot, "vulyk.json"), manifest);
+  writeConfig(path.join(projectRoot, "vulyk.config.ts"), manifest);
 
   runAgents(projectRoot);
 
@@ -127,7 +127,7 @@ void test("agentsCommand: embed and summary entries compose in one agent file", 
       },
     },
   };
-  writeJson(path.join(projectRoot, "vulyk.json"), manifest);
+  writeConfig(path.join(projectRoot, "vulyk.config.ts"), manifest);
 
   runAgents(projectRoot);
 
@@ -157,7 +157,7 @@ void test("agentsCommand: a group render mode applies to its entries", () => {
       },
     },
   };
-  writeJson(path.join(projectRoot, "vulyk.json"), manifest);
+  writeConfig(path.join(projectRoot, "vulyk.config.ts"), manifest);
 
   runAgents(projectRoot);
 
@@ -179,7 +179,7 @@ void test("agentsCommand: rendering stays idempotent for an embed entry", () => 
       },
     },
   };
-  writeJson(path.join(projectRoot, "vulyk.json"), manifest);
+  writeConfig(path.join(projectRoot, "vulyk.config.ts"), manifest);
 
   runAgents(projectRoot);
   const first = fs.readFileSync(path.join(projectRoot, "AGENTS.md"), "utf8");

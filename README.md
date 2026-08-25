@@ -37,7 +37,7 @@ npx github:Bredansky/vulyk agents
 
 ### `vulyk init`
 
-Creates an empty `vulyk.json` (`{ "groups": {}, "entries": {} }`) in the current directory. With no groups configured, `vulyk add` writes each entry in the inline form, carrying its own `outputPaths`, `validate`, and `gitIgnore`.
+Creates an empty `vulyk.config.ts` using the typed `defineConfig` API in the current directory. With no groups configured, `vulyk add` writes each entry in the inline form, carrying its own `outputPaths`, `validate`, and `gitIgnore`.
 
 ### `vulyk add <specifier>`
 
@@ -72,7 +72,7 @@ Shows what would change if you ran `update`.
 
 ### `vulyk update [name]`
 
-Updates remote git-backed entries to the latest commit reachable from their configured ref. Local entries are refreshed from disk. On success, remote sources are repinned in `vulyk.json`.
+Updates remote git-backed entries to the latest commit reachable from their configured ref. Local entries are refreshed from disk. On success, GitHub ref resolutions are updated in `vulyk.lock.json`; the executable config remains the source of intent.
 
 ### `vulyk sync`
 
@@ -106,7 +106,7 @@ Prints JSON for tracked targets declared by a specific doc. Useful when a doc ch
 vulyk find-targets docs/external/project-structure.md
 ```
 
-## :receipt: `vulyk.json`
+## :receipt: `vulyk.config.ts`
 
 ### Grouped form (shared config across entries)
 
@@ -147,25 +147,27 @@ vulyk find-targets docs/external/project-structure.md
       "description": "Project structure conventions and patterns."
     }
   }
-}
+});
 ```
 
 ### Inline form (single entry, no `groups` block)
 
 For a single entry the full group config can be inlined directly on the entry — no shared group needed.
 
-```json
-{
-  "groups": {},
-  "entries": {
+```ts
+import { defineConfig } from "vulyk/config";
+
+export default defineConfig({
+  groups: {},
+  entries: {
     "my-skill": {
-      "source": "https://github.com/owner/skill/tree/<commit>/skill",
-      "outputPaths": [".agents/skills"],
-      "validate": { "mustContain": ["SKILL.md"] },
-      "gitIgnore": true
-    }
-  }
-}
+      source: "https://github.com/owner/skill/tree/<commit>/skill",
+      outputPaths: [".agents/skills"],
+      validate: { mustContain: ["SKILL.md"] },
+      gitIgnore: true,
+    },
+  },
+});
 ```
 
 Entry-level fields override group-level fields. Resolution order: `entry.outputPaths` → `group.rules[match].outputPaths` → `group.outputPaths` → `["docs/external"]`. Same chain for `gitIgnore` and (where applicable) `validate`.
@@ -202,7 +204,71 @@ Entry-level fields override group-level fields. Resolution order: `entry.outputP
 | `https://example.com/file.md`                  | A direct markdown URL                                   |
 | `https://example.com/archive.zip`              | A direct archive URL                                    |
 
-GitHub-backed remote sources in `vulyk.json` must use commit-pinned `blob` or `tree` URLs. During `add`, `sync`, and `update`, GitHub sources are normalized to pinned commit URLs. Local sources are stored as repo-relative paths.
+GitHub-backed remote sources in `vulyk.config.ts` use `blob` or `tree` URLs. Resolved refs are recorded in `vulyk.lock.json`; local sources are stored as repo-relative paths.
+
+## :link: Linked Markdown sources
+
+Set `linkResolution` in `vulyk.config.ts` to resolve relative links from single-file GitHub Markdown sources:
+
+```ts
+linkResolution: {
+  sharedOutputPath: "docs/shared",
+  sharedSourceRoot: "docs",
+  maxDepth: 1,
+}
+```
+
+Folder sources remain opaque. File sources download same-repository relative targets into the shared output, rewrite links while preserving fragments, and pin absolute GitHub links to commit URLs. Non-GitHub URLs and fragment-only links are preserved. Broken links, depth-limit violations, shared-root escapes, and output collisions fail the sync.
+
+`vulyk.lock.json` contains only GitHub ref resolutions:
+
+```json
+{
+  "github": {
+    "owner/repo@main": "<40-character-commit-sha>"
+  }
+}
+```
+
+## :link: Linked Markdown sources
+
+Set `linkResolution` in `vulyk.config.ts` to resolve relative links from single-file GitHub Markdown sources:
+
+```ts
+linkResolution: {
+  sharedOutputPath: "docs/shared",
+  sharedSourceRoot: "docs",
+  maxDepth: 1,
+}
+```
+
+Folder sources remain opaque. File sources download same-repository relative targets into the shared output, rewrite links while preserving fragments, and pin absolute GitHub links to commit URLs. Non-GitHub URLs and fragment-only links are preserved. Broken links, depth-limit violations, shared-root escapes, and output collisions fail the sync.
+
+`vulyk.lock.json` contains only GitHub ref resolutions:
+
+```json
+{
+  "github": {
+    "owner/repo@main": "<40-character-commit-sha>"
+  }
+}
+```
+
+## :link: Linked Markdown sources
+
+Set `linkResolution` in `vulyk.config.ts` to resolve relative links from single-file GitHub Markdown sources:
+
+```ts
+linkResolution: {
+  sharedOutputPath: "docs/shared",
+  sharedSourceRoot: "docs",
+  maxDepth: 1,
+}
+```
+
+Folder sources remain opaque. File sources download same-repository relative targets into the shared output, rewrite links while preserving fragments, and pin absolute GitHub links to commit URLs. Non-GitHub URLs and fragment-only links are preserved. Broken links, depth-limit violations, shared-root escapes, and output collisions fail the sync.
+
+`vulyk.lock.json` contains only GitHub ref resolutions. `.vulyk/state.json`, `.vulyk/cache/`, and `.vulyk/tmp/` are ignored local state and working data.
 
 ## :page_with_curl: Summary and embed
 
@@ -259,8 +325,9 @@ Both modes still install the copy into `outputPaths`, so an embedded doc exists 
 
 ## :broom: How managed files work
 
-- Every vulyk-managed location has a `.vulyk` manifest listing exactly the files vulyk created there. The manifest is the source of truth for cleanup.
-- **Cleanup is conservative.** `vulyk sync` only removes files that are listed in a `.vulyk` manifest AND no longer claimed by an enabled entry. Files you put in an output path yourself are never touched, even if they have a `.md` extension.
+- `.vulyk/state.json` records the ignored local ownership state for files generated by Vulyk.
+- `.vulyk/cache/` stores ignored project-local Git repository caches and `.vulyk/tmp/` stores transient downloads.
+- **Cleanup is conservative.** `vulyk sync` only removes files recorded in `.vulyk/state.json` AND no longer claimed by an enabled entry. Files you put in an output path yourself are never touched, even if they have a `.md` extension.
 - **The root `.gitignore`** is updated with paths to vulyk-managed copies that aren't part of your own source tree. A local source path is never gitignored — even if it happens to share a path with one of the configured `outputPaths`.
 - **Agent file generation.** For every doc entry with a `targets` list, the primary agent file (default `AGENTS.md`) is generated in each target dir. Additional agents declared via `entry.agents` (e.g. `CLAUDE.md`) chain to the primary with `@AGENTS.md`. See the `vulyk agents` flags above for details.
 - **Idempotency.** `vulyk sync` and `vulyk agents` can both be run repeatedly. Each only writes files that changed; `agents` does not duplicate `AGENTS.md` sections.

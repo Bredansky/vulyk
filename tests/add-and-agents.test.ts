@@ -9,14 +9,14 @@ import { agentsCommand } from "../src/commands/agents.js";
 import { syncCommand } from "../src/commands/sync.js";
 import { readManifest } from "../src/lib/manifest.js";
 import { readState, writeState } from "../src/lib/state.js";
+import { writeConfig } from "./fixtures.js";
 
 function makeTempProject(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-add-test-"));
 }
 
 function writeJson(filePath: string, value: unknown): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  writeConfig(filePath, value);
 }
 
 function writeFile(filePath: string, body: string): void {
@@ -33,7 +33,7 @@ afterEach(() => {
   }
 });
 
-function readLockfile(projectRoot: string): {
+function readOwnershipState(projectRoot: string): {
   syncPaths: string[];
   agentPaths: string[];
 } {
@@ -44,7 +44,7 @@ void test("addCommand installs a local skill and writes config inline when no gr
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     groups: {},
     entries: {},
   });
@@ -62,7 +62,7 @@ void test("addCommand installs a local skill and writes config inline when no gr
   }
 
   const manifestBody = fs.readFileSync(
-    path.join(projectRoot, "vulyk.json"),
+    path.join(projectRoot, "vulyk.config.ts"),
     "utf8",
   );
   assert.match(manifestBody, /"groups":\s*\{\s*\}/);
@@ -74,7 +74,7 @@ void test("addCommand installs a local skill and writes config inline when no gr
   assert.match(manifestBody, /"validate":\s*\{[\s\S]*"mustContain"/);
   assert.match(manifestBody, /"gitIgnore":\s*true/);
 
-  const manifest = readManifest(path.join(projectRoot, "vulyk.json"));
+  const manifest = readManifest(path.join(projectRoot, "vulyk.config.ts"));
   const alpha = manifest.entries.alpha;
   assert.ok(alpha);
   assert.equal(alpha.group, undefined);
@@ -90,14 +90,14 @@ void test("addCommand installs a local skill and writes config inline when no gr
     true,
   );
 
-  // Per-dir `.vulyk` markers are gone — the lockfile alone tracks state.
+  // Per-dir `.vulyk` markers are gone; ownership is stored in state.json.
   assert.equal(
     fs.existsSync(path.join(projectRoot, ".agents/skills", "alpha", ".vulyk")),
     false,
   );
 
-  // The lockfile records syncPaths for this install.
-  const lock = readLockfile(projectRoot);
+  // The local ownership state records syncPaths for this install.
+  const lock = readOwnershipState(projectRoot);
   assert.ok(
     lock.syncPaths.includes(".agents/skills/alpha"),
     `expected lockfile syncPaths to include .agents/skills/alpha, got ${JSON.stringify(lock.syncPaths)}`,
@@ -108,7 +108,7 @@ void test("addCommand expands a local collection into per-skill entries with inl
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     groups: {},
     entries: {},
   });
@@ -129,7 +129,7 @@ void test("addCommand expands a local collection into per-skill entries with inl
     process.chdir(initialCwd);
   }
 
-  const manifest = readManifest(path.join(projectRoot, "vulyk.json"));
+  const manifest = readManifest(path.join(projectRoot, "vulyk.config.ts"));
   assert.ok(manifest.entries.one);
   assert.ok(manifest.entries.two);
   assert.equal(manifest.entries.one.group, undefined);
@@ -150,7 +150,7 @@ void test("addCommand installs a local doc and writes config inline when no grou
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     groups: {},
     entries: {},
   });
@@ -164,7 +164,7 @@ void test("addCommand installs a local doc and writes config inline when no grou
     process.chdir(initialCwd);
   }
 
-  const manifest = readManifest(path.join(projectRoot, "vulyk.json"));
+  const manifest = readManifest(path.join(projectRoot, "vulyk.config.ts"));
   assert.ok(manifest.entries.guide);
   assert.equal(manifest.entries.guide.group, undefined);
   assert.deepEqual(manifest.entries.guide.outputPaths, ["docs/external"]);
@@ -177,7 +177,7 @@ void test("addCommand installs a local doc and writes config inline when no grou
 
   // Symmetric to the dir-source tests: the lockfile tracks the file-source
   // install at its destination file path (no suffix magic).
-  const lock = readLockfile(projectRoot);
+  const lock = readOwnershipState(projectRoot);
   assert.ok(
     lock.syncPaths.includes("docs/external/guide.md"),
     `expected lockfile syncPaths to include docs/external/guide.md, got ${JSON.stringify(lock.syncPaths)}`,
@@ -188,7 +188,7 @@ void test("addCommand honors an existing group's outputPaths", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     groups: {
       skills: {
         outputPaths: ["managed-skills", ".claude/skills"],
@@ -224,8 +224,8 @@ void test("addCommand honors an existing group's outputPaths", async () => {
     true,
   );
 
-  // Both installs land in the lockfile.
-  const lock = readLockfile(projectRoot);
+  // Both installs land in local ownership state.
+  const lock = readOwnershipState(projectRoot);
   assert.ok(lock.syncPaths.includes("managed-skills/alpha"));
   assert.ok(lock.syncPaths.includes(".claude/skills/alpha"));
 });
@@ -234,7 +234,7 @@ void test("syncCommand: entry-level outputPaths overrides group outputPaths", as
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     groups: {
       skills: {
         outputPaths: ["managed-skills"],
@@ -287,7 +287,7 @@ void test("removeCommand deletes an entry from the manifest", () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     groups: {
       skills: {
         outputPaths: ["managed-skills"],
@@ -316,7 +316,7 @@ void test("removeCommand deletes an entry from the manifest", () => {
   }
 
   const manifestBody = fs.readFileSync(
-    path.join(projectRoot, "vulyk.json"),
+    path.join(projectRoot, "vulyk.config.ts"),
     "utf8",
   );
   assert.doesNotMatch(manifestBody, /"alpha":/);
@@ -326,7 +326,7 @@ void test("syncCommand installs local skills from disk and supports update", asy
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     groups: {
       skills: {
         outputPaths: ["managed-skills"],
@@ -366,17 +366,17 @@ void test("syncCommand installs local skills from disk and supports update", asy
   }
 });
 
-void test("syncCommand prunes tracked managed paths whose entry is removed from vulyk.json", async () => {
+void test("syncCommand prunes tracked managed paths whose entry is removed from vulyk.config.ts", async () => {
   // Under the lockfile-driven cleanup model, vulyk only removes paths it
   // previously wrote. To exercise that, we install both entries first so the
-  // lockfile records both, then drop one entry from vulyk.json and re-sync.
+  // lockfile records both, then drop one entry from vulyk.config.ts and re-sync.
   // The corresponding managed dir must be deleted; the kept entry must
   // survive verbatim. User-written files in a managed output path are
   // off-limits to cleanup and are covered by a separate test.
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  const manifestPath = path.join(projectRoot, "vulyk.json");
+  const manifestPath = path.join(projectRoot, "vulyk.config.ts");
   writeJson(manifestPath, {
     groups: {
       skills: {
@@ -401,7 +401,7 @@ void test("syncCommand prunes tracked managed paths whose entry is removed from 
   const initialCwd = process.cwd();
   process.chdir(projectRoot);
   try {
-    // First sync: both entries installed and recorded in the lockfile.
+    // First sync: both entries installed and recorded in local state.
     await syncCommand();
     const alphaPath = path.join(
       projectRoot,
@@ -426,14 +426,14 @@ void test("syncCommand prunes tracked managed paths whose entry is removed from 
       "remote installed on first sync",
     );
 
-    const lockBeforeDrop = readLockfile(projectRoot);
+    const lockBeforeDrop = readOwnershipState(projectRoot);
     assert.ok(
       lockBeforeDrop.syncPaths.includes("managed-skills/alpha"),
-      `lockfile should track alpha as a directory; got ${JSON.stringify(lockBeforeDrop.syncPaths)}`,
+      `state should track alpha as a directory; got ${JSON.stringify(lockBeforeDrop.syncPaths)}`,
     );
     assert.ok(
       lockBeforeDrop.syncPaths.includes("managed-skills/remote"),
-      `lockfile should track remote as a directory; got ${JSON.stringify(lockBeforeDrop.syncPaths)}`,
+      `state should track remote as a directory; got ${JSON.stringify(lockBeforeDrop.syncPaths)}`,
     );
 
     // Drop the remote entry from the manifest and re-sync.
@@ -441,8 +441,7 @@ void test("syncCommand prunes tracked managed paths whose entry is removed from 
     delete manifest.entries.remote;
     fs.writeFileSync(
       manifestPath,
-      `${JSON.stringify(manifest, null, 2)}
-`,
+      `export default ${JSON.stringify(manifest, null, 2)};\n`,
       "utf8",
     );
 
@@ -456,17 +455,17 @@ void test("syncCommand prunes tracked managed paths whose entry is removed from 
     assert.equal(
       fs.existsSync(path.join(projectRoot, "managed-skills", "remote")),
       false,
-      "untracked entry's managed dir must be pruned",
+      "stale generated directory must be pruned",
     );
 
-    const lockAfterDrop = readLockfile(projectRoot);
+    const lockAfterDrop = readOwnershipState(projectRoot);
     assert.ok(
       !lockAfterDrop.syncPaths.includes("managed-skills/remote"),
-      `lockfile should no longer track remote; got ${JSON.stringify(lockAfterDrop.syncPaths)}`,
+      `state should no longer track remote; got ${JSON.stringify(lockAfterDrop.syncPaths)}`,
     );
     assert.ok(
       lockAfterDrop.syncPaths.includes("managed-skills/alpha"),
-      `lockfile should still track alpha; got ${JSON.stringify(lockAfterDrop.syncPaths)}`,
+      `state should still track alpha; got ${JSON.stringify(lockAfterDrop.syncPaths)}`,
     );
   } finally {
     process.chdir(initialCwd);
@@ -477,7 +476,7 @@ void test("syncCommand preserves managed files and state when an entry fails", a
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     entries: {
       broken: {
         source: "not-a-supported-source",
@@ -517,7 +516,7 @@ void test("agentsCommand leaves user-added files in an output path alone", () =>
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     groups: {
       docs: {
         outputPaths: ["docs/external"],
@@ -550,11 +549,10 @@ void test("agentsCommand leaves user-added files in an output path alone", () =>
       fs.existsSync(path.join(projectRoot, "docs", "external", "my-notes.md")),
       true,
     );
-    // Agents did not run a sync, so .vulyk does NOT exist
-    // yet (or it could carry agentPaths). Either way, my-notes.md is
-    // not in the lockfile.
+    // Agents did not run a sync, so generated sync ownership is absent.
+    // Either way, my-notes.md is not recorded.
     if (fs.existsSync(path.join(projectRoot, ".vulyk"))) {
-      const lock = readLockfile(projectRoot);
+      const lock = readOwnershipState(projectRoot);
       assert.ok(!lock.syncPaths.includes("docs/external/my-notes.md"));
       assert.ok(!lock.agentPaths.includes("docs/external/my-notes.md"));
     }
@@ -572,7 +570,7 @@ void test("syncCommand does not gitignore local sources that share a managed out
     '{"name":"test-fixture"}\n',
   );
 
-  writeJson(path.join(projectRoot, "vulyk.json"), {
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
     groups: {
       skills: {
         outputPaths: ["skills", "managed-skills"],
@@ -612,7 +610,7 @@ void test("syncCommand does not gitignore local sources that share a managed out
       ),
       true,
     );
-    // Per-dir `.vulyk` is gone; lockfile tracks the install.
+    // Per-dir `.vulyk` is gone; state tracks the install.
     assert.equal(
       fs.existsSync(
         path.join(projectRoot, "managed-skills", "alpha", ".vulyk"),

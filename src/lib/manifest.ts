@@ -1,21 +1,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { register } from "tsx/cjs/api";
 import { ManifestSchema, type Manifest } from "../types.js";
 import { writeTextFile } from "./text.js";
 
-export const MANIFEST_FILE = "vulyk.json";
+export const CONFIG_FILE = "vulyk.config.ts";
 
 export function findManifest(): string | null {
   let dir = process.cwd();
   for (;;) {
-    const candidate = path.join(dir, MANIFEST_FILE);
+    const candidate = path.join(dir, CONFIG_FILE);
     if (fs.existsSync(candidate)) {
-      // Anchor the process to the project root. All manifest paths are
-      // project-root-relative, and downstream `path.resolve(p)` calls
-      // (in resolvePath helpers) are CWD-relative — so we chdir here
-      // once and let every subsequent resolver behave correctly.
-      // Safe for a CLI: this is a child process, the user's shell is
-      // unaffected.
       process.chdir(dir);
       return candidate;
     }
@@ -26,19 +21,41 @@ export function findManifest(): string | null {
 }
 
 export function readManifest(filePath: string): Manifest {
-  return ManifestSchema.parse(JSON.parse(fs.readFileSync(filePath, "utf8")));
+  const scope = register({
+    namespace: `vulyk-config-${String(Date.now())}-${String(Math.random())}`,
+  });
+  try {
+    const module: unknown = scope.require(
+      path.resolve(filePath),
+      import.meta.url,
+    );
+    if (!isConfigModule(module)) {
+      throw new Error(`${CONFIG_FILE} must export a default config.`);
+    }
+    return ManifestSchema.parse(module.default ?? module.config);
+  } finally {
+    scope.unregister();
+  }
 }
 
 export function writeManifest(filePath: string, manifest: Manifest): void {
   const tmp = `${filePath}.tmp`;
-  writeTextFile(tmp, `${JSON.stringify(manifest, null, 2)}\n`);
+  const body = JSON.stringify(manifest, null, 2);
+  writeTextFile(
+    tmp,
+    `import type { VulykConfig } from "vulyk/config";\n\nconst defineConfig = (config: VulykConfig): VulykConfig => config;\n\nexport default defineConfig(${body});\n`,
+  );
   fs.renameSync(tmp, filePath);
 }
 
 export function initManifest(filePath: string): Manifest {
-  // Start with empty groups + entries. Users declare groups,
-  // then `vulyk add <source>` auto-detects the right one.
   const manifest = ManifestSchema.parse({});
   writeManifest(filePath, manifest);
   return manifest;
+}
+
+function isConfigModule(
+  value: unknown,
+): value is { default?: unknown; config?: unknown } {
+  return typeof value === "object" && value !== null;
 }

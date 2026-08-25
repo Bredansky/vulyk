@@ -1,19 +1,19 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { MANIFEST_FILE, initManifest } from "../lib/manifest.js";
+import { CONFIG_FILE, initManifest } from "../lib/manifest.js";
 import { log } from "../lib/log.js";
 
 export function initCommand(): void {
-  const filePath = path.join(process.cwd(), MANIFEST_FILE);
+  const filePath = path.join(process.cwd(), CONFIG_FILE);
 
   if (fs.existsSync(filePath)) {
-    log.warn(`${MANIFEST_FILE} already exists`);
+    log.warn(`${CONFIG_FILE} already exists`);
     return;
   }
 
   initManifest(filePath);
-  log.success(`Created ${MANIFEST_FILE}`);
+  log.success(`Created ${CONFIG_FILE}`);
   log.dim(`  Add a skill: vulyk add <github-url>`);
   log.dim(`  Add a doc:   vulyk add <github-url-to-markdown>`);
-  log.dim(`  See: vulyk.json for groups and entries`);
+  log.dim(`  See: vulyk.config.ts for groups and entries`);
 }
