@@ -12,6 +12,18 @@ export const AgentSchema = z.string();
 
 export type AgentSpec = z.infer<typeof AgentSchema>;
 
+// --- Render mode: how a doc entry appears in a generated agent file ---
+
+/**
+ * `summary` writes the doc's title, description, and a path pointing at the
+ * installed copy. `embed` writes the doc's body into the agent file instead, for
+ * a document an agent should always have in context rather than have to open.
+ * The installed copy is written either way.
+ */
+export const RenderModeSchema = z.enum(["summary", "embed"]);
+
+export type RenderMode = z.infer<typeof RenderModeSchema>;
+
 // --- Doc rule (used inside groups.rules for target-glob output routing) ---
 
 export const DocRuleSchema = z.object({
@@ -49,6 +61,8 @@ export const GroupSchema = z.object({
   // Default agent files to generate per target dir. Entry-level `agents`
   // overrides this list.
   agents: z.array(AgentSchema).optional(),
+  // Default render mode for this group's entries. Entry-level `render` wins.
+  render: RenderModeSchema.optional(),
 });
 
 export type Group = z.infer<typeof GroupSchema>;
@@ -82,6 +96,9 @@ export const EntrySchema = z.object({
   targets: z.array(z.string()).optional(),
   // Doc-style: human-readable description.
   description: z.string().optional(),
+  // How this doc appears in a generated agent file. Group-level `render`
+  // applies when absent.
+  render: RenderModeSchema.optional(),
 });
 
 export type Entry = z.infer<typeof EntrySchema>;
@@ -100,6 +117,7 @@ export const ManifestSchema = z.object({
   // unless resolved value is `true`).
   gitIgnore: z.boolean().optional(),
   agents: z.array(AgentSchema).optional(),
+  render: RenderModeSchema.optional(),
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;

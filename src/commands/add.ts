@@ -17,7 +17,7 @@ import {
   isEnabled,
 } from "../lib/groups.js";
 import { readState, writeState } from "../lib/state.js";
-import type { Manifest, Group } from "../types.js";
+import type { Manifest, Group, RenderMode } from "../types.js";
 
 const DEFAULT_DIR_GROUP = {
   outputPaths: [".agents/skills"],
@@ -201,6 +201,7 @@ function addOneSource(
   sourceIsLocal: boolean,
   specifierForEntry: (subPath?: string) => string,
   accumulator: string[],
+  render: RenderMode | undefined,
 ): void {
   const shape = inspectSource(sourcePath);
   if (!shape.exists) {
@@ -239,6 +240,7 @@ function addOneSource(
             : specifierForEntry(sub),
           group: subGroup,
           ...(inline ?? {}),
+          ...(render ? { render } : {}),
         };
         installEntry(
           manifest,
@@ -268,6 +270,7 @@ function addOneSource(
       : specifierForEntry(),
     group,
     ...(inline ?? {}),
+    ...(render ? { render } : {}),
   };
   const installName = installEntry(
     manifest,
@@ -293,6 +296,7 @@ async function addRemote(
   _projectRoot: string,
   groupHint: string | undefined,
   accumulator: string[],
+  render: RenderMode | undefined,
 ): Promise<void> {
   log.info(`Fetching ${nameHint}...`);
   const tmpDir = path.join(os.homedir(), ".vulyk", "tmp", nameHint);
@@ -324,6 +328,7 @@ async function addRemote(
     (sub) =>
       sub ? `${stripPinnedRef(finalSpecifier)}/${sub}` : finalSpecifier,
     accumulator,
+    render,
   );
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
@@ -334,6 +339,7 @@ function addLocal(
   projectRoot: string,
   groupHint: string | undefined,
   accumulator: string[],
+  render: RenderMode | undefined,
 ): void {
   const sourcePath = path.resolve(projectRoot, specifier);
   addOneSource(
@@ -345,12 +351,13 @@ function addLocal(
     true,
     () => path.relative(projectRoot, sourcePath).replace(/\\/g, "/"),
     accumulator,
+    render,
   );
 }
 
 export async function addCommand(
   specifier: string,
-  opts: { name?: string; group?: string } = {},
+  opts: { name?: string; group?: string; render?: RenderMode } = {},
 ): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
@@ -373,7 +380,14 @@ export async function addCommand(
   const newSyncPaths: string[] = [];
 
   if (!isRemoteSpecifier(specifier)) {
-    addLocal(specifier, manifest, projectRoot, opts.group, newSyncPaths);
+    addLocal(
+      specifier,
+      manifest,
+      projectRoot,
+      opts.group,
+      newSyncPaths,
+      opts.render,
+    );
   } else {
     await addRemote(
       specifier,
@@ -382,6 +396,7 @@ export async function addCommand(
       projectRoot,
       opts.group,
       newSyncPaths,
+      opts.render,
     );
   }
 

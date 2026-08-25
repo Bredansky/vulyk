@@ -37,7 +37,7 @@ npx github:Bredansky/vulyk agents
 
 ### `vulyk init`
 
-Creates a `vulyk.json` in the current directory with a `skills` group (default output `.agents/skills`) and a `docs` group (default output `docs/external`).
+Creates an empty `vulyk.json` (`{ "groups": {}, "entries": {} }`) in the current directory. With no groups configured, `vulyk add` writes each entry in the inline form, carrying its own `outputPaths`, `validate`, and `gitIgnore`.
 
 ### `vulyk add <specifier>`
 
@@ -48,6 +48,7 @@ vulyk add ./skills/my-local-skill
 vulyk add ./skills/my-pack                    # expands to per-skill entries
 vulyk add https://github.com/owner/repo/tree/main/skills/my-skill
 vulyk add https://github.com/owner/repo/blob/main/docs/my-doc.md --targets src
+vulyk add ./docs/agent-policy.md --render embed  # write its body into AGENTS.md
 vulyk add https://example.com/archive.zip
 ```
 
@@ -179,6 +180,7 @@ Entry-level fields override group-level fields. Resolution order: `entry.outputP
 | `groups.<name>.gitIgnore`    | Whether to gitignore the group's installed files (per-group default; can be overridden per entry)                         |
 | `groups.<name>.enabled`      | Per-group opt-in whitelist. Empty array = all entries install (opt-out).                                                  |
 | `groups.<name>.disabled`     | Per-group opt-out list. Always wins over `enabled`.                                                                       |
+| `groups.<name>.render`       | Default render mode for the group's entries. Entry-level `render` wins.                                                   |
 | `entries.<name>.source`      | Local repo-relative path or remote URL                                                                                    |
 | `entries.<name>.group`       | Name of the group this entry belongs to (optional if the entry is self-grouped inline)                                    |
 | `entries.<name>.outputPaths` | Optional per-entry override of the group's `outputPaths`                                                                  |
@@ -187,6 +189,7 @@ Entry-level fields override group-level fields. Resolution order: `entry.outputP
 | `entries.<name>.targets`     | Optional list of dirs where agent files should be generated for this entry (doc entries only)                             |
 | `entries.<name>.description` | Optional one-line summary, used in generated `AGENTS.md` sections                                                         |
 | `entries.<name>.agents`      | Agent files to generate in each target dir (default: `["AGENTS.md"]`). First entry is primary; rest chain via `@primary`. |
+| `entries.<name>.render`      | `summary` (default) or `embed` — see [Summary and embed](#summary-and-embed)                                              |
 
 ## :link: Specifier format
 
@@ -200,6 +203,59 @@ Entry-level fields override group-level fields. Resolution order: `entry.outputP
 | `https://example.com/archive.zip`              | A direct archive URL                                    |
 
 GitHub-backed remote sources in `vulyk.json` must use commit-pinned `blob` or `tree` URLs. During `add`, `sync`, and `update`, GitHub sources are normalized to pinned commit URLs. Local sources are stored as repo-relative paths.
+
+## :page_with_curl: Summary and embed
+
+A doc entry appears in its agent files one of two ways. `render` selects which, resolved entry, then group, then manifest, then the `summary` default.
+
+**`summary`** — the title, the entry's `description`, and a path to the installed copy. The agent opens the file when it needs it.
+
+```markdown
+# Code Organization Guide
+
+How to organize components, types, constants, utilities, config, hooks, and locales.
+
+Full documentation: docs/managed/code-organization-guide/code-organization-guide.md
+```
+
+**`embed`** — the doc's body, written into the agent file. For a document an agent should always have in context rather than have to open. The body already opens with its own title and overview, so neither the `description` nor a path is written.
+
+```markdown
+# Agent Policy
+
+Repo-wide requirements for AI agents working in this repository.
+
+## Code Quality
+
+- Code MUST NOT use `eslint-disable` directives, and a reported violation MUST be fixed instead.
+```
+
+Both modes still install the copy into `outputPaths`, so an embedded doc exists on disk as well and stays diffable against its source. A directory entry embeds its entry-point doc — the same file `summary` would have pointed at — and the rest of the directory stays reachable through the installed copy.
+
+```json
+{
+  "groups": {
+    "managed": {
+      "outputPaths": ["docs/managed"],
+      "agents": ["AGENTS.md", "CLAUDE.md"]
+    }
+  },
+  "entries": {
+    "agent-policy": {
+      "source": "...",
+      "group": "managed",
+      "targets": ["."],
+      "render": "embed"
+    },
+    "code-organization-guide": {
+      "source": "...",
+      "group": "managed",
+      "targets": ["."],
+      "description": "..."
+    }
+  }
+}
+```
 
 ## :broom: How managed files work
 

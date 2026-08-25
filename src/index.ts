@@ -1,5 +1,7 @@
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
+import { log } from "./lib/log.js";
+import { RenderModeSchema } from "./types.js";
 import { initCommand } from "./commands/init.js";
 import { addCommand } from "./commands/add.js";
 import { removeCommand } from "./commands/remove.js";
@@ -30,9 +32,27 @@ program
   .description("Add a skill or doc from a local path or remote URL")
   .option("-n, --name <name>", "override the entry name")
   .option("-g, --group <name>", "force a specific group")
+  .option(
+    "-r, --render <mode>",
+    "how the doc appears in agent files: summary (default) or embed",
+  )
   .action(
-    async (specifier: string, opts: { name?: string; group?: string }) => {
-      await addCommand(specifier, { name: opts.name, group: opts.group });
+    async (
+      specifier: string,
+      opts: { name?: string; group?: string; render?: string },
+    ) => {
+      const render = RenderModeSchema.safeParse(opts.render);
+      if (opts.render !== undefined && !render.success) {
+        log.error(
+          `--render must be one of ${RenderModeSchema.options.join(", ")}.`,
+        );
+        process.exit(1);
+      }
+      await addCommand(specifier, {
+        name: opts.name,
+        group: opts.group,
+        render: render.success ? render.data : undefined,
+      });
     },
   );
 
