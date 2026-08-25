@@ -1,6 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Manifest, Entry, Group, DocRule, AgentSpec } from "../types.js";
+import type {
+  Manifest,
+  Entry,
+  Group,
+  DocRule,
+  AgentSpec,
+  RenderMode,
+} from "../types.js";
 
 // --- Lookup helpers ---
 
@@ -62,6 +69,22 @@ export function resolveAgents(
   // Default: an entry with `targets` always gets AGENTS.md unless it
   // explicitly opts out via `agents: []`.
   return ["AGENTS.md"];
+}
+
+/**
+ * How an entry renders into its agent files: entry, then group, then manifest,
+ * then `summary` — the pointer form every entry used before `embed` existed.
+ */
+export function resolveRenderMode(
+  manifest: Manifest,
+  entryName: string,
+): RenderMode {
+  const entry = getEntry(manifest, entryName);
+  if (entry?.render) return entry.render;
+  const group = resolveGroupForEntry(manifest, entryName);
+  if (group?.render) return group.render;
+  if (manifest.render) return manifest.render;
+  return "summary";
 }
 
 export function resolveGitignoreGenerated(

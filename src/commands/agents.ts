@@ -1,7 +1,12 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { findManifest, readManifest } from "../lib/manifest.js";
-import { getEntry, isEnabled, resolveAgents } from "../lib/groups.js";
+import {
+  getEntry,
+  isEnabled,
+  resolveAgents,
+  resolveRenderMode,
+} from "../lib/groups.js";
 import { log } from "../lib/log.js";
 import { readState, writeState } from "../lib/state.js";
 import { cleanupStale } from "../lib/cleanup.js";
@@ -40,6 +45,15 @@ function renderPrimarySection(
   return `${blocks.join("\n\n")}\n`;
 }
 
+/**
+ * The doc's own body, for an entry rendered as `embed`. The body already opens
+ * with its title and overview, so the entry's `description` and the path
+ * pointer are both redundant here.
+ */
+function renderEmbeddedSection(docFilePath: string): string {
+  return `${fs.readFileSync(docFilePath, "utf8").trim()}\n`;
+}
+
 interface AgentContribution {
   targetDir: string;
   agentPath: string;
@@ -71,7 +85,11 @@ function computePrimaryContribution(
   const primaryAgent = agents[0];
   if (!primaryAgent) return [];
 
-  const body = `${renderPrimarySection(title, description, docRelativePath)}\n`;
+  const section =
+    resolveRenderMode(manifest, name) === "embed"
+      ? renderEmbeddedSection(docFilePath)
+      : renderPrimarySection(title, description, docRelativePath);
+  const body = `${section}\n`;
 
   return entry.targets.map((target) => {
     const targetDir = getTargetDir(projectRoot, target);
