@@ -52,6 +52,7 @@ export function refreshGitRepoCache(repoCache: string): void {
 
 export function ensureGitRepoCache(repoUrl: string): string {
   const repoCache = getRepoCachePath(repoUrl);
+  fs.mkdirSync(path.dirname(repoCache), { recursive: true });
 
   if (!fs.existsSync(repoCache)) {
     execFileSync("git", ["clone", "--bare", repoUrl, repoCache], {
