@@ -155,7 +155,14 @@ export function computeExpectedGitignoreEntries(
     }
   }
 
-  return [...new Set([".vulyk/cache/", ".vulyk/tmp/", ...entries])].sort();
+  return [
+    ...new Set([
+      ".vulyk/state.json",
+      ".vulyk/cache/",
+      ".vulyk/tmp/",
+      ...entries,
+    ]),
+  ].sort();
 }
 
 /**

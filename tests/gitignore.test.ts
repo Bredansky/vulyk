@@ -27,9 +27,14 @@ void test("vulyk sync auto-adds .vulyk/cache to project's .gitignore managed blo
     assert.ok(blockEnd > blockStart, "end marker follows start");
     const block = text.slice(blockStart, blockEnd + "# end vulyk".length);
     assert.ok(
+      block.includes(".vulyk/state.json"),
+      ".vulyk/state.json inside managed block",
+    );
+    assert.ok(
       block.includes(".vulyk/cache/"),
       ".vulyk/cache inside managed block",
     );
+    assert.ok(block.includes(".vulyk/tmp/"), ".vulyk/tmp inside managed block");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -55,9 +60,14 @@ void test("vulyk agents auto-adds .vulyk/cache to project's .gitignore managed b
     assert.ok(blockEnd > blockStart, "end marker follows start");
     const block = text.slice(blockStart, blockEnd + "# end vulyk".length);
     assert.ok(
+      block.includes(".vulyk/state.json"),
+      ".vulyk/state.json inside managed block",
+    );
+    assert.ok(
       block.includes(".vulyk/cache/"),
       ".vulyk/cache inside managed block",
     );
+    assert.ok(block.includes(".vulyk/tmp/"), ".vulyk/tmp inside managed block");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -79,8 +89,16 @@ void test("vulyk sync leaves .gitignore unchanged when .vulyk/cache already in m
     }
     const text = fs.readFileSync(path.join(dir, ".gitignore"), "utf8");
     assert.ok(
+      text.includes(".vulyk/state.json"),
+      ".vulyk/state.json still present idempotently",
+    );
+    assert.ok(
       text.includes(".vulyk/cache/"),
       ".vulyk/cache still present idempotently",
+    );
+    assert.ok(
+      text.includes(".vulyk/tmp/"),
+      ".vulyk/tmp still present idempotently",
     );
     // Should not have duplicated .vulyk
     assert.equal(
