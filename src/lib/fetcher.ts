@@ -279,9 +279,6 @@ export async function fetchSource(
   resolved: ResolvedSource,
   destDir: string,
 ): Promise<string | null> {
-  const cacheDir = path.join(os.homedir(), ".vulyk", "cache");
-  fs.mkdirSync(cacheDir, { recursive: true });
-
   if (resolved.kind === "git") {
     return fetchGitSource(resolved, destDir);
   }
