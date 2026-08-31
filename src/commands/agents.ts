@@ -127,7 +127,18 @@ function writeComposedAgentFiles(
   for (const [agentPath, bucket] of buckets) {
     const targetDir = bucket[0]?.targetDir ?? path.dirname(agentPath);
     fs.mkdirSync(targetDir, { recursive: true });
-    const sections = bucket.map((c) => c.body.trim());
+    // Dedup identical bodies: an entry with several targets that resolve to
+    // the same directory (e.g. multiple repo-root files, or a glob plus its
+    // base dir) would otherwise repeat its section once per target. Keep the
+    // first occurrence so section order is stable.
+    const seen = new Set<string>();
+    const sections: string[] = [];
+    for (const c of bucket) {
+      const body = c.body.trim();
+      if (seen.has(body)) continue;
+      seen.add(body);
+      sections.push(body);
+    }
     const desired =
       sections.length > 0 ? `${sections.join("\n\n---\n\n")}\n` : "";
 

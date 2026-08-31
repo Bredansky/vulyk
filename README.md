@@ -94,6 +94,8 @@ The import is straight `@<path>` text — no framing, no separators. See the [Cl
 
 Prints JSON for tracked docs that apply to a specific file. Useful when a skill or review workflow wants to answer "which docs should I compare this file against?"
 
+The match is against each entry's routing globs — `scope` when declared, otherwise `targets`. Routing is decoupled from agent-file placement: a doc can apply to `src/**` (via `scope`) while its AGENTS.md section still lives at the repo root (`targets: ["."]`).
+
 ```sh
 vulyk find-docs src/features/editor/poster.tsx
 ```
@@ -174,24 +176,25 @@ Entry-level fields override group-level fields. Resolution order: `entry.outputP
 
 `vulyk add` writes the inline form automatically when the manifest has no `groups` configured — handy for new projects that only need one entry.
 
-| Field                        | Description                                                                                                               |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `groups.<name>.outputPaths`  | Directories where this group's entries are installed                                                                      |
-| `groups.<name>.validate`     | `mustContain` (required files) and/or `fileExtension` (expected ext) used by `vulyk add` to auto-detect the group         |
-| `groups.<name>.rules`        | Optional per-group `[{ match, outputPaths }]` overrides that take precedence over the group default                       |
-| `groups.<name>.gitIgnore`    | Whether to gitignore the group's installed files (per-group default; can be overridden per entry)                         |
-| `groups.<name>.enabled`      | Per-group opt-in whitelist. Empty array = all entries install (opt-out).                                                  |
-| `groups.<name>.disabled`     | Per-group opt-out list. Always wins over `enabled`.                                                                       |
-| `groups.<name>.render`       | Default render mode for the group's entries. Entry-level `render` wins.                                                   |
-| `entries.<name>.source`      | Local repo-relative path or remote URL                                                                                    |
-| `entries.<name>.group`       | Name of the group this entry belongs to (optional if the entry is self-grouped inline)                                    |
-| `entries.<name>.outputPaths` | Optional per-entry override of the group's `outputPaths`                                                                  |
-| `entries.<name>.validate`    | Optional per-entry `validate` block (used by `vulyk add` for auto-detection; ignored at sync time)                        |
-| `entries.<name>.gitIgnore`   | Optional per-entry override of the group's `gitIgnore`                                                                    |
-| `entries.<name>.targets`     | Optional list of dirs where agent files should be generated for this entry (doc entries only)                             |
-| `entries.<name>.description` | Optional one-line summary, used in generated `AGENTS.md` sections                                                         |
-| `entries.<name>.agents`      | Agent files to generate in each target dir (default: `["AGENTS.md"]`). First entry is primary; rest chain via `@primary`. |
-| `entries.<name>.render`      | `summary` (default) or `embed` — see [Summary and embed](#summary-and-embed)                                              |
+| Field                        | Description                                                                                                                                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `groups.<name>.outputPaths`  | Directories where this group's entries are installed                                                                                                                                                                            |
+| `groups.<name>.validate`     | `mustContain` (required files) and/or `fileExtension` (expected ext) used by `vulyk add` to auto-detect the group                                                                                                               |
+| `groups.<name>.rules`        | Optional per-group `[{ match, outputPaths }]` overrides that take precedence over the group default                                                                                                                             |
+| `groups.<name>.gitIgnore`    | Whether to gitignore the group's installed files (per-group default; can be overridden per entry)                                                                                                                               |
+| `groups.<name>.enabled`      | Per-group opt-in whitelist. Empty array = all entries install (opt-out).                                                                                                                                                        |
+| `groups.<name>.disabled`     | Per-group opt-out list. Always wins over `enabled`.                                                                                                                                                                             |
+| `groups.<name>.render`       | Default render mode for the group's entries. Entry-level `render` wins.                                                                                                                                                         |
+| `entries.<name>.source`      | Local repo-relative path or remote URL                                                                                                                                                                                          |
+| `entries.<name>.group`       | Name of the group this entry belongs to (optional if the entry is self-grouped inline)                                                                                                                                          |
+| `entries.<name>.outputPaths` | Optional per-entry override of the group's `outputPaths`                                                                                                                                                                        |
+| `entries.<name>.validate`    | Optional per-entry `validate` block (used by `vulyk add` for auto-detection; ignored at sync time)                                                                                                                              |
+| `entries.<name>.gitIgnore`   | Optional per-entry override of the group's `gitIgnore`                                                                                                                                                                          |
+| `entries.<name>.targets`     | Optional list of dirs where agent files should be generated for this entry (doc entries only)                                                                                                                                   |
+| `entries.<name>.scope`       | Optional routing globs for `find-docs`/`find-targets`. When present, overrides `targets` for routing only — placement still follows `targets`. Lets a doc scope advice to `src/**` while keeping its section in root AGENTS.md. |
+| `entries.<name>.description` | Optional one-line summary, used in generated `AGENTS.md` sections                                                                                                                                                               |
+| `entries.<name>.agents`      | Agent files to generate in each target dir (default: `["AGENTS.md"]`). First entry is primary; rest chain via `@primary`.                                                                                                       |
+| `entries.<name>.render`      | `summary` (default) or `embed` — see [Summary and embed](#summary-and-embed)                                                                                                                                                    |
 
 ## :link: Specifier format
 

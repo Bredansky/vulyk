@@ -3,7 +3,11 @@ import * as path from "node:path";
 import * as os from "node:os";
 import type { Manifest } from "../types.js";
 import { findManifest, readManifest } from "./manifest.js";
-import { getEntry, resolveOutputPaths } from "./groups.js";
+import {
+  getEntry,
+  resolveOutputPaths,
+  resolveRoutingForEntry,
+} from "./groups.js";
 
 export interface DocFile {
   filePath: string;
@@ -202,13 +206,10 @@ export function findDocsForFile(filePath: string): {
   const matchedDocs: { doc: FileDocMatch; sortKey: MatchSortKey }[] = [];
 
   for (const [name, entry] of Object.entries(manifest.entries)) {
-    if (!entry.targets) continue;
+    const routing = resolveRoutingForEntry(manifest, name);
+    if (!routing) continue;
 
-    if (
-      !entry.targets.some((target) =>
-        matchTarget(projectRoot, filePath, target),
-      )
-    ) {
+    if (!routing.some((target) => matchTarget(projectRoot, filePath, target))) {
       continue;
     }
 
@@ -223,7 +224,7 @@ export function findDocsForFile(filePath: string): {
         kind: isLocalSource(projectRoot, entry.source) ? "local" : "external",
         name: title || name,
         description: entry.description ?? "",
-        targets: entry.targets,
+        targets: routing,
         source: isLocalSource(projectRoot, entry.source)
           ? undefined
           : entry.source,
@@ -232,7 +233,7 @@ export function findDocsForFile(filePath: string): {
           : undefined,
         filePath: filePathForDoc,
       },
-      sortKey: getMatchSortKey(projectRoot, filePath, entry.targets),
+      sortKey: getMatchSortKey(projectRoot, filePath, routing),
     });
   }
 
@@ -262,7 +263,8 @@ export function findTargetsForDoc(docPath: string): {
   );
 
   for (const [name, entry] of Object.entries(manifest.entries)) {
-    if (!entry.targets) continue;
+    const routing = resolveRoutingForEntry(manifest, name);
+    if (!routing) continue;
     const filePathForDoc = getDocSourcePath(manifest, projectRoot, name);
     if (!filePathForDoc) continue;
     if (normalizeRelative(projectRoot, filePathForDoc) !== normalizedDocPath) {
@@ -278,7 +280,7 @@ export function findTargetsForDoc(docPath: string): {
       source: isLocalSource(projectRoot, entry.source)
         ? undefined
         : entry.source,
-      targets: entry.targets.map((target) => ({
+      targets: routing.map((target) => ({
         path: normalizeTarget(target),
         kind: getTargetKind(projectRoot, target),
       })),

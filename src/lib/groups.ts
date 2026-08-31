@@ -72,6 +72,22 @@ export function resolveAgents(
 }
 
 /**
+ * Which paths a doc entry routes to in `find-docs`/`find-targets`.
+ * Entry-level `scope` overrides `targets` for routing only — `targets`
+ * continues to decide where agent files are generated. Without `scope`,
+ * routing falls back to `targets` (the historical behavior).
+ */
+export function resolveRoutingForEntry(
+  manifest: Manifest,
+  entryName: string,
+): string[] | undefined {
+  const entry = getEntry(manifest, entryName);
+  if (!entry) return undefined;
+  if (entry.scope && entry.scope.length > 0) return entry.scope;
+  return entry.targets;
+}
+
+/**
  * How an entry renders into its agent files: entry, then group, then manifest,
  * then `summary` — the pointer form every entry used before `embed` existed.
  */
