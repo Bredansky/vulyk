@@ -94,12 +94,6 @@ export const EntrySchema = z.object({
     .optional(),
   // Doc-style: which code paths this doc applies to.
   targets: z.array(z.string()).optional(),
-  // Doc-style: file globs used by `find-docs`/`find-targets` routing. When
-  // present, overrides `targets` for routing only — `targets` alone decides
-  // where agent files are generated. This decouples the two: a doc can scope
-  // its guidance narrowly (e.g. ["src/**"]) while keeping its AGENTS.md
-  // section at the repo root (targets: ["."]).
-  scope: z.array(z.string()).optional(),
   // Doc-style: human-readable description.
   description: z.string().optional(),
   // How this doc appears in a generated agent file. Group-level `render`

@@ -199,7 +199,6 @@ void test("addCommand repoints a named local routed doc and preserves unspecifie
         source: "docs/shadcn-theme-guide.md",
         group: "docs",
         targets: ["."],
-        scope: ["src/**"],
         description: "Old routing description.",
       },
     },
@@ -233,7 +232,6 @@ void test("addCommand repoints a named local routed doc and preserves unspecifie
     source: "docs/shadcn-theme-guide/shadcn-theme-guide.md",
     group: "docs",
     targets: ["."],
-    scope: ["src/**"],
     description: "When adapting shadcn components and theme tokens.",
   });
   assert.deepEqual(readOwnershipState(projectRoot).syncPaths, []);
