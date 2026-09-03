@@ -37,6 +37,14 @@ interface SourceShape {
   exists: boolean;
 }
 
+interface AddEntryOptions {
+  name?: string;
+  group?: string;
+  render?: RenderMode;
+  targets?: string[];
+  description?: string;
+}
+
 /** Read a source's shape without classifying it as skill/doc/etc. */
 function inspectSource(srcPath: string): SourceShape {
   if (!fs.existsSync(srcPath)) {
@@ -123,9 +131,14 @@ function resolveGroupForSource(
   shape: SourceShape,
   hint: string | undefined,
 ): string | undefined {
+  if (hint) {
+    if (!manifest.groups[hint]) {
+      throw new Error(`Group "${hint}" does not exist.`);
+    }
+    return hint;
+  }
   const detected = detectGroup(manifest, srcPath, shape.isFile);
   if (detected) return detected;
-  if (hint && manifest.groups[hint]) return hint;
   if (Object.keys(manifest.groups).length === 0) return undefined;
   return defaultGroupFor(manifest, shape, srcPath);
 }
@@ -157,6 +170,10 @@ function installEntry(
 ): string {
   const outputPaths = resolveOutputPaths(manifest, entryName);
   if (outputPaths.length === 0) {
+    const entry = manifest.entries[entryName];
+    if (sourceIsLocal && entry?.targets && entry.targets.length > 0) {
+      return entryName;
+    }
     throw new Error(
       `Entry "${entryName}" has no outputPaths (entry, group, or manifest).`,
     );
@@ -201,7 +218,7 @@ function addOneSource(
   sourceIsLocal: boolean,
   specifierForEntry: (subPath?: string) => string,
   accumulator: string[],
-  render: RenderMode | undefined,
+  opts: AddEntryOptions,
 ): void {
   const shape = inspectSource(sourcePath);
   if (!shape.exists) {
@@ -212,7 +229,16 @@ function addOneSource(
   // Try to detect a group. For a directory, also probe whether the source is
   // a collection of sub-entries — if so, the group is determined by what the
   // sub-entries would match, not by the dir itself.
-  const group = resolveGroupForSource(manifest, sourcePath, shape, groupHint);
+  const inferredEntryName = shape.isFile
+    ? path.basename(sourcePath, path.extname(sourcePath))
+    : path.basename(sourcePath);
+  const existingEntry = manifest.entries[opts.name ?? inferredEntryName];
+  const group = resolveGroupForSource(
+    manifest,
+    sourcePath,
+    shape,
+    groupHint ?? existingEntry?.group,
+  );
   const resolvedGroup = group ? manifest.groups[group] : undefined;
 
   if (shape.isDir) {
@@ -240,7 +266,7 @@ function addOneSource(
             : specifierForEntry(sub),
           group: subGroup,
           ...(inline ?? {}),
-          ...(render ? { render } : {}),
+          ...(opts.render ? { render: opts.render } : {}),
         };
         installEntry(
           manifest,
@@ -260,17 +286,20 @@ function addOneSource(
   }
 
   // Single entry (file or single directory).
-  const entryName = shape.isFile
-    ? path.basename(sourcePath, path.extname(sourcePath))
-    : path.basename(sourcePath);
+  const entryName = opts.name ?? inferredEntryName;
   const inline = group ? undefined : inlineEntryFor(shape);
+  const previousEntry = manifest.entries[entryName];
+  const source = sourceIsLocal
+    ? path.relative(projectRoot, sourcePath).replace(/\\/g, "/")
+    : specifierForEntry();
   manifest.entries[entryName] = {
-    source: sourceIsLocal
-      ? path.relative(projectRoot, sourcePath).replace(/\\/g, "/")
-      : specifierForEntry(),
+    ...previousEntry,
+    source,
     group,
     ...(inline ?? {}),
-    ...(render ? { render } : {}),
+    ...(opts.render ? { render: opts.render } : {}),
+    ...(opts.targets ? { targets: opts.targets } : {}),
+    ...(opts.description ? { description: opts.description } : {}),
   };
   const installName = installEntry(
     manifest,
@@ -296,7 +325,7 @@ async function addRemote(
   _projectRoot: string,
   groupHint: string | undefined,
   accumulator: string[],
-  render: RenderMode | undefined,
+  opts: AddEntryOptions,
 ): Promise<void> {
   log.info(`Fetching ${nameHint}...`);
   const tmpDir = getProjectTempPath(nameHint);
@@ -328,7 +357,7 @@ async function addRemote(
     (sub) =>
       sub ? `${stripPinnedRef(finalSpecifier)}/${sub}` : finalSpecifier,
     accumulator,
-    render,
+    opts,
   );
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
@@ -339,7 +368,7 @@ function addLocal(
   projectRoot: string,
   groupHint: string | undefined,
   accumulator: string[],
-  render: RenderMode | undefined,
+  opts: AddEntryOptions,
 ): void {
   const sourcePath = path.resolve(projectRoot, specifier);
   addOneSource(
@@ -351,13 +380,13 @@ function addLocal(
     true,
     () => path.relative(projectRoot, sourcePath).replace(/\\/g, "/"),
     accumulator,
-    render,
+    opts,
   );
 }
 
 export async function addCommand(
   specifier: string,
-  opts: { name?: string; group?: string; render?: RenderMode } = {},
+  opts: AddEntryOptions = {},
 ): Promise<void> {
   const manifestPath = findManifest();
   if (!manifestPath) {
@@ -380,14 +409,7 @@ export async function addCommand(
   const newSyncPaths: string[] = [];
 
   if (!isRemoteSpecifier(specifier)) {
-    addLocal(
-      specifier,
-      manifest,
-      projectRoot,
-      opts.group,
-      newSyncPaths,
-      opts.render,
-    );
+    addLocal(specifier, manifest, projectRoot, opts.group, newSyncPaths, opts);
   } else {
     await addRemote(
       specifier,
@@ -396,7 +418,7 @@ export async function addCommand(
       projectRoot,
       opts.group,
       newSyncPaths,
-      opts.render,
+      opts,
     );
   }
 

@@ -32,6 +32,8 @@ program
   .description("Add a skill or doc from a local path or remote URL")
   .option("-n, --name <name>", "override the entry name")
   .option("-g, --group <name>", "force a specific group")
+  .option("-t, --targets <list>", "comma-separated agent target paths")
+  .option("-d, --description <text>", "agent routing description")
   .option(
     "-r, --render <mode>",
     "how the doc appears in agent files: summary (default) or embed",
@@ -39,7 +41,13 @@ program
   .action(
     async (
       specifier: string,
-      opts: { name?: string; group?: string; render?: string },
+      opts: {
+        name?: string;
+        group?: string;
+        targets?: string;
+        description?: string;
+        render?: string;
+      },
     ) => {
       const render = RenderModeSchema.safeParse(opts.render);
       if (opts.render !== undefined && !render.success) {
@@ -51,6 +59,11 @@ program
       await addCommand(specifier, {
         name: opts.name,
         group: opts.group,
+        targets: opts.targets
+          ?.split(",")
+          .map((target) => target.trim())
+          .filter(Boolean),
+        description: opts.description,
         render: render.success ? render.data : undefined,
       });
     },
