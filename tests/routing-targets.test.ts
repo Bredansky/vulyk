@@ -1,11 +1,7 @@
-// Regression tests for two vulyk gaps found while dogfooding on karaylo:
-//
-// 1. `vulyk agents` repeated a doc's section once per target that resolves to
+// Regression tests for target routing and agent-file placement.
+// `vulyk agents` once repeated a doc's section per target that resolves to
 //    the same directory (e.g. several repo-root file targets all place into
 //    root AGENTS.md), producing N identical `---`-separated sections.
-// 2. `targets` did double duty — `find-docs` routing and agent-file placement —
-//    so you couldn't scope routing narrowly (src/**) without scattering
-//    AGENTS.md files across subdirectories. The `scope` field decouples them.
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -15,7 +11,7 @@ import { agentsCommand } from "../src/commands/agents.js";
 import { findDocsForFile, findTargetsForDoc } from "../src/lib/docs.js";
 
 function makeTempProject(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-routing-scope-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-routing-targets-"));
 }
 
 function writeConfig(filePath: string, value: unknown): void {
@@ -97,60 +93,7 @@ void test("agentsCommand writes one section when an entry's targets all resolve 
   }
 });
 
-void test("scope routes find-docs while targets keep agent files at the repo root", () => {
-  const projectRoot = makeTempProject();
-  createdDirs.push(projectRoot);
-
-  writeConfig(path.join(projectRoot, "vulyk.config.ts"), {
-    groups: {},
-    entries: {
-      "code-org": {
-        source: "docs/code-org.md",
-        scope: ["src/**"],
-        targets: ["."],
-        description: "Code organization rules.",
-      },
-    },
-  });
-  writeFile(
-    path.join(projectRoot, "docs", "code-org.md"),
-    "# Code Organization Guide\nBody.\n",
-  );
-
-  const initialCwd = process.cwd();
-  process.chdir(projectRoot);
-  try {
-    // Routing is scoped: src/** matches, scripts/ does not.
-    const matched = findDocsForFile("src/features/poster.tsx");
-    const doc = matched.docs[0];
-    assert.ok(doc, "doc applies inside src/**");
-    assert.deepEqual(doc.targets, ["src/**"]);
-
-    const unmatched = findDocsForFile("scripts/build.ts");
-    assert.equal(unmatched.docs.length, 0, "doc does not apply outside scope");
-
-    // find-targets reports the routing globs (scope), not placement.
-    const targets = findTargetsForDoc("docs/code-org.md");
-    assert.deepEqual(
-      targets.targets.map((t) => t.path),
-      ["src/**"],
-      "find-targets reflects the routing scope",
-    );
-
-    // Placement still honors targets: one root AGENTS.md, nothing in src/.
-    agentsCommand();
-    assert.equal(fs.existsSync(path.join(projectRoot, "AGENTS.md")), true);
-    assert.equal(
-      fs.existsSync(path.join(projectRoot, "src", "AGENTS.md")),
-      false,
-      "no scattered agent file under src/",
-    );
-  } finally {
-    process.chdir(initialCwd);
-  }
-});
-
-void test("without scope, targets keep doing both jobs (backward compatible)", () => {
+void test("targets route docs and place agent files", () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
 
@@ -174,6 +117,16 @@ void test("without scope, targets keep doing both jobs (backward compatible)", (
   try {
     const matched = findDocsForFile("src/features/poster.tsx");
     assert.equal(matched.docs.length, 1, "targets still route find-docs");
+
+    const unmatched = findDocsForFile("scripts/build.ts");
+    assert.equal(unmatched.docs.length, 0, "targets exclude unrelated files");
+
+    const targets = findTargetsForDoc("docs/code-org.md");
+    assert.deepEqual(
+      targets.targets.map((target) => target.path),
+      ["src/**"],
+      "find-targets reports the configured targets",
+    );
 
     agentsCommand();
     assert.equal(
