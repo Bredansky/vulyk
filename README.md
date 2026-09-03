@@ -54,6 +54,16 @@ vulyk add https://example.com/archive.zip
 
 GitHub sources are pinned to commits on add. Local sources are stored as repo-relative paths.
 
+Passing `--name` for a single source sets its entry name. If that entry already exists, `add` updates its source and any explicitly passed `--group`, `--targets`, `--description`, or `--render` values while preserving every unspecified field. Local routed docs with targets may stay at their source path and do not need an installation output path.
+
+**Flags:**
+
+- `--name <name>` — set or reuse the entry name.
+- `--group <name>` — force an existing group instead of auto-detection.
+- `--targets <list>` — set comma-separated agent target paths.
+- `--description <text>` — set the agent routing description.
+- `--render <mode>` — render the doc as `summary` or `embed` in agent files.
+
 ### `vulyk remove <name>`
 
 Removes an entry from the manifest and uninstalls its installed files on the next `vulyk agents` run.

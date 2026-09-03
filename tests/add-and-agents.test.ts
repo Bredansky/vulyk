@@ -184,6 +184,186 @@ void test("addCommand installs a local doc and writes config inline when no grou
   );
 });
 
+void test("addCommand repoints a named local routed doc and preserves unspecified metadata", async () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
+    groups: {
+      docs: {
+        agents: ["AGENTS.md"],
+      },
+    },
+    entries: {
+      "shadcn-theme": {
+        source: "docs/shadcn-theme-guide.md",
+        group: "docs",
+        targets: ["."],
+        scope: ["src/**"],
+        description: "Old routing description.",
+      },
+    },
+  });
+  writeFile(
+    path.join(
+      projectRoot,
+      "docs",
+      "shadcn-theme-guide",
+      "shadcn-theme-guide.md",
+    ),
+    "# shadcn Theme Guide\n",
+  );
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    await addCommand("docs/shadcn-theme-guide/shadcn-theme-guide.md", {
+      name: "shadcn-theme",
+      group: "docs",
+      description: "When adapting shadcn components and theme tokens.",
+    });
+    agentsCommand();
+  } finally {
+    process.chdir(initialCwd);
+  }
+
+  const manifest = readManifest(path.join(projectRoot, "vulyk.config.ts"));
+  assert.deepEqual(Object.keys(manifest.entries), ["shadcn-theme"]);
+  assert.deepEqual(manifest.entries["shadcn-theme"], {
+    source: "docs/shadcn-theme-guide/shadcn-theme-guide.md",
+    group: "docs",
+    targets: ["."],
+    scope: ["src/**"],
+    description: "When adapting shadcn components and theme tokens.",
+  });
+  assert.deepEqual(readOwnershipState(projectRoot).syncPaths, []);
+
+  const agents = fs.readFileSync(path.join(projectRoot, "AGENTS.md"), "utf8");
+  assert.match(agents, /When adapting shadcn components and theme tokens\./);
+  assert.match(
+    agents,
+    /Full documentation: docs\/shadcn-theme-guide\/shadcn-theme-guide\.md/,
+  );
+});
+
+void test("addCommand creates a local routed doc without an output path when targets are provided", async () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
+    groups: { docs: { agents: ["AGENTS.md"] } },
+    entries: {},
+  });
+  writeFile(path.join(projectRoot, "docs", "guide.md"), "# Guide\n");
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    await addCommand("docs/guide.md", {
+      name: "guide",
+      group: "docs",
+      targets: ["src", "tests"],
+      description: "When implementing guide-covered behavior.",
+    });
+  } finally {
+    process.chdir(initialCwd);
+  }
+
+  const manifest = readManifest(path.join(projectRoot, "vulyk.config.ts"));
+  assert.deepEqual(manifest.entries.guide, {
+    source: "docs/guide.md",
+    group: "docs",
+    targets: ["src", "tests"],
+    description: "When implementing guide-covered behavior.",
+  });
+});
+
+void test("addCommand gives an explicit group precedence over source detection", async () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
+    groups: {
+      detected: {
+        outputPaths: ["detected-docs"],
+        validate: { fileExtension: ".md" },
+      },
+      selected: {
+        outputPaths: ["selected-docs"],
+      },
+    },
+    entries: {},
+  });
+  writeFile(path.join(projectRoot, "sources", "guide.md"), "# Guide\n");
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    await addCommand("sources/guide.md", { group: "selected" });
+  } finally {
+    process.chdir(initialCwd);
+  }
+
+  const manifest = readManifest(path.join(projectRoot, "vulyk.config.ts"));
+  assert.equal(manifest.entries.guide?.group, "selected");
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, "selected-docs", "guide.md")),
+    true,
+  );
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, "detected-docs", "guide.md")),
+    false,
+  );
+});
+
+void test("addCommand preserves an inferred existing entry's group", async () => {
+  const projectRoot = makeTempProject();
+  createdDirs.push(projectRoot);
+
+  writeJson(path.join(projectRoot, "vulyk.config.ts"), {
+    groups: {
+      detected: {
+        outputPaths: ["detected-docs"],
+        validate: { fileExtension: ".md" },
+      },
+      selected: {
+        outputPaths: ["selected-docs"],
+      },
+    },
+    entries: {
+      guide: {
+        source: "old/guide.md",
+        group: "selected",
+        description: "Existing guide.",
+      },
+    },
+  });
+  writeFile(path.join(projectRoot, "sources", "guide.md"), "# Guide\n");
+
+  const initialCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    await addCommand("sources/guide.md");
+  } finally {
+    process.chdir(initialCwd);
+  }
+
+  const manifest = readManifest(path.join(projectRoot, "vulyk.config.ts"));
+  assert.deepEqual(manifest.entries.guide, {
+    source: "sources/guide.md",
+    group: "selected",
+    description: "Existing guide.",
+  });
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, "selected-docs", "guide.md")),
+    true,
+  );
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, "detected-docs", "guide.md")),
+    false,
+  );
+});
+
 void test("addCommand honors an existing group's outputPaths", async () => {
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
