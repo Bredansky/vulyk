@@ -1,6 +1,6 @@
 {
   "name": "vulyk",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Package manager for AI agent skills and agents",
   "keywords": [
     "ai",
