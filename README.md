@@ -8,11 +8,20 @@ This repo can also host canonical skills under `skills/` that projects consume v
 
 ## :package: Install
 
+Run it straight from GitHub — no install step:
+
 ```sh
 npx github:Bredansky/vulyk ...
 ```
 
-Vulyk is a GitHub-only package. All commands are run via `npx github:Bredansky/vulyk` — no install step.
+Or install the published CLI and pin it in `devDependencies`, so local runs and CI resolve the same version:
+
+```sh
+npm i -D vulyk
+npx vulyk ...
+```
+
+A repository that pins the package calls every command as `npx vulyk`; the GitHub specifier is unpinned and resolves the repository's default branch.
 
 ## :zap: Quick start
 
@@ -232,55 +241,15 @@ linkResolution: {
 
 Folder sources remain opaque. File sources download same-repository relative targets into the shared output, rewrite links while preserving fragments, and pin absolute GitHub links to commit URLs. Non-GitHub URLs and fragment-only links are preserved. Broken links, depth-limit violations, shared-root escapes, and output collisions fail the sync.
 
-`vulyk.lock.json` contains only GitHub ref resolutions:
-
-```json
-{
-  "github": {
-    "owner/repo@main": "<40-character-commit-sha>"
-  }
-}
-```
-
-## :link: Linked Markdown sources
-
-Set `linkResolution` in `vulyk.config.ts` to resolve relative links from single-file GitHub Markdown sources:
-
-```ts
-linkResolution: {
-  sharedOutputPath: "docs/shared",
-  sharedSourceRoot: "docs",
-  maxDepth: 1,
-}
-```
-
-Folder sources remain opaque. File sources download same-repository relative targets into the shared output, rewrite links while preserving fragments, and pin absolute GitHub links to commit URLs. Non-GitHub URLs and fragment-only links are preserved. Broken links, depth-limit violations, shared-root escapes, and output collisions fail the sync.
-
-`vulyk.lock.json` contains only GitHub ref resolutions:
-
-```json
-{
-  "github": {
-    "owner/repo@main": "<40-character-commit-sha>"
-  }
-}
-```
-
-## :link: Linked Markdown sources
-
-Set `linkResolution` in `vulyk.config.ts` to resolve relative links from single-file GitHub Markdown sources:
-
-```ts
-linkResolution: {
-  sharedOutputPath: "docs/shared",
-  sharedSourceRoot: "docs",
-  maxDepth: 1,
-}
-```
-
-Folder sources remain opaque. File sources download same-repository relative targets into the shared output, rewrite links while preserving fragments, and pin absolute GitHub links to commit URLs. Non-GitHub URLs and fragment-only links are preserved. Broken links, depth-limit violations, shared-root escapes, and output collisions fail the sync.
-
 `vulyk.lock.json` contains only GitHub ref resolutions. `.vulyk/state.json`, `.vulyk/cache/`, and `.vulyk/tmp/` are ignored local state and working data.
+
+```json
+{
+  "github": {
+    "owner/repo@main": "<40-character-commit-sha>"
+  }
+}
+```
 
 ## :page_with_curl: Summary and embed
 
