@@ -102,6 +102,20 @@ void test("readState tolerates a corrupt .vulyk by returning empty state", () =>
   assert.deepEqual(r, { syncPaths: [], agentPaths: [] });
 });
 
+void test("pending removals roundtrip independently of current outputs", () => {
+  const dir = tmpRoot();
+  writeState(dir, {
+    syncPaths: ["docs/current.md"],
+    agentPaths: [],
+    pendingStagePaths: ["docs/old.md", "docs/old.md"],
+  });
+  assert.deepEqual(readState(dir), {
+    syncPaths: ["docs/current.md"],
+    agentPaths: [],
+    pendingStagePaths: ["docs/old.md"],
+  });
+});
+
 void test("applyCleanupDelta deletes paths in prev not in curr", () => {
   const dir = tmpRoot();
   fs.writeFileSync(path.join(dir, "stale.txt"), "stale");

@@ -240,6 +240,10 @@ export function agentsCommand(
   writeState(projectRoot, {
     syncPaths: previousState.syncPaths,
     agentPaths: newAgentPaths,
+    pendingStagePaths: [
+      ...(previousState.pendingStagePaths ?? []),
+      ...previousState.agentPaths.filter((p) => !newAgentPaths.includes(p)),
+    ],
   });
 
   refreshGitignore(manifest, projectRoot);

@@ -205,6 +205,10 @@ export async function syncCommand(): Promise<boolean> {
   writeState(projectRoot, {
     syncPaths: newSyncPaths,
     agentPaths: previousState.agentPaths,
+    pendingStagePaths: [
+      ...(previousState.pendingStagePaths ?? []),
+      ...previousState.syncPaths.filter((p) => !newSyncPaths.includes(p)),
+    ],
   });
 
   // Refresh the gitignore block to match the current state of the file

@@ -10,6 +10,7 @@ import { disableCommand } from "./commands/disable.js";
 import { listCommand } from "./commands/list.js";
 import { syncCommand } from "./commands/sync.js";
 import { agentsCommand } from "./commands/agents.js";
+import { stageCommand } from "./commands/stage.js";
 import { updateCommand } from "./commands/update.js";
 import { diffCommand } from "./commands/diff.js";
 import { findDocsCommand } from "./commands/find-docs.js";
@@ -122,6 +123,13 @@ program
   .action(async () => {
     if (!(await syncCommand())) process.exitCode = 1;
   });
+
+program
+  .command("stage")
+  .description(
+    "Stage only Git-trackable files owned by Vulyk, including removals",
+  )
+  .action(stageCommand);
 
 program
   .command("agents")

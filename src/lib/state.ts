@@ -7,6 +7,8 @@ const VULYK_STATE_FILE = path.join(".vulyk", "state.json");
 export interface VulykState {
   syncPaths: string[];
   agentPaths: string[];
+  /** Removed managed outputs awaiting staging in Git. */
+  pendingStagePaths?: string[];
 }
 
 function emptyState(): VulykState {
@@ -15,12 +17,15 @@ function emptyState(): VulykState {
 
 function parseLine(
   line: string,
-): { kind: "agent" | "doc"; path: string } | null {
+): { kind: "agent" | "doc" | "pending"; path: string } | null {
   if (line.startsWith("\u{1F36F} ")) {
     return { kind: "agent", path: line.slice("\u{1F36F} ".length) };
   }
   if (line.startsWith("\u{1F41D} ")) {
     return { kind: "doc", path: line.slice("\u{1F41D} ".length) };
+  }
+  if (line.startsWith("\u{1F4CC} ")) {
+    return { kind: "pending", path: line.slice("\u{1F4CC} ".length) };
   }
   return null;
 }
@@ -31,13 +36,17 @@ export function readState(dir: string): VulykState {
   const text = fs.readFileSync(f, "utf8");
   const agentPaths: string[] = [];
   const syncPaths: string[] = [];
+  const pendingStagePaths: string[] = [];
   for (const line of text.split("\n")) {
     const entry = parseLine(line);
     if (!entry) continue;
     if (entry.kind === "agent") agentPaths.push(entry.path);
+    else if (entry.kind === "pending") pendingStagePaths.push(entry.path);
     else syncPaths.push(entry.path);
   }
-  return { agentPaths, syncPaths };
+  return pendingStagePaths.length > 0
+    ? { agentPaths, syncPaths, pendingStagePaths }
+    : { agentPaths, syncPaths };
 }
 
 export function writeState(dir: string, state: VulykState): void {
@@ -50,7 +59,10 @@ export function writeState(dir: string, state: VulykState): void {
   const syncLines = [...new Set(state.syncPaths)]
     .sort()
     .map((p) => `\u{1F41D} ${p}`);
-  const out = [...agentLines, ...syncLines];
+  const pendingLines = [...new Set(state.pendingStagePaths ?? [])]
+    .sort()
+    .map((p) => `\u{1F4CC} ${p}`);
+  const out = [...agentLines, ...syncLines, ...pendingLines];
   writeTextFile(tmp, out.join("\n") + (out.length ? "\n" : ""));
   fs.renameSync(tmp, f);
 }
