@@ -436,5 +436,6 @@ export async function addCommand(
   writeState(projectRoot, {
     syncPaths: [...mergedSync].sort(),
     agentPaths: previousState.agentPaths,
+    pendingStagePaths: previousState.pendingStagePaths,
   });
 }

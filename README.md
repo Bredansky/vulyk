@@ -53,10 +53,11 @@ npx vulyk agents
 | `vulyk update [name]`      | Moves remote entries to the newest commit their ref reaches; refreshes locals  |
 | `vulyk sync`               | Installs every enabled entry to its output paths and prunes stale files        |
 | `vulyk agents`             | Generates the `AGENTS.md` / `CLAUDE.md` files for entries that declare targets |
+| `vulyk stage`              | Stages only Git-trackable Vulyk-managed files, including removed outputs       |
 | `vulyk find-docs <file>`   | Prints the tracked docs that apply to a file                                   |
 | `vulyk find-targets <doc>` | Prints the targets a doc applies to                                            |
 
-`sync` is the install step and `agents` is the generate step — each only writes what changed, and both are safe to re-run.
+`sync` is the install step and `agents` is the generate step — each only writes what changed, and both are safe to re-run. Run `vulyk stage` after them to stage only the files Vulyk owns (including deletions from replaced or disabled entries), without staging unrelated worktree changes. Untracked files excluded by `.gitignore` stay ignored; the Vulyk lockfile and repository-owned `.gitignore` are not auto-staged.
 
 **`vulyk add` flags:** `--name` sets or reuses an entry name; `--group` forces a group instead of auto-detecting it; `--targets` sets comma-separated target paths; `--description` sets the routing description; `--render` chooses `summary` or `embed`. GitHub sources are pinned to commits, a local path is stored repo-relative, and re-adding an existing `--name` updates only the fields you passed.
 
