@@ -3,7 +3,6 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { LinkResolution } from "../types.js";
 import { ensureGitRepoCache } from "./fetcher.js";
-import { githubLockKey, type VulykLockfile } from "./lockfile.js";
 
 interface GitHubSource {
   owner: string;
@@ -91,37 +90,23 @@ function objectType(
   }
 }
 
-function resolveCommit(
-  github: GitHubSource,
-  lockfile: VulykLockfile,
-): { repoCache: string; commit: string } {
-  const repoCache = ensureGitRepoCache(github.repoUrl);
-  if (isCommit(github.ref)) return { repoCache, commit: github.ref };
-
-  const key = githubLockKey(github.owner, github.repo, github.ref);
-  const locked = lockfile.github[key];
-  if (locked) return { repoCache, commit: locked };
-
-  const commit = execFileSync(
-    "git",
-    ["--git-dir", repoCache, "rev-parse", github.ref],
-    { encoding: "utf8", stdio: "pipe" },
-  ).trim();
-  if (!isCommit(commit)) {
-    throw new Error(`GitHub ref could not be resolved: ${key}`);
+function resolveCommit(github: GitHubSource): {
+  repoCache: string;
+  commit: string;
+} {
+  if (!isCommit(github.ref)) {
+    throw new Error(
+      `GitHub Markdown link must use a 40-character commit SHA instead of "${github.ref}": ${github.owner}/${github.repo}.`,
+    );
   }
-  lockfile.github[key] = commit;
-  return { repoCache, commit };
+  return { repoCache: ensureGitRepoCache(github.repoUrl), commit: github.ref };
 }
 
-function pinAbsoluteGitHubLink(
-  target: string,
-  lockfile: VulykLockfile,
-): string | null {
+function pinAbsoluteGitHubLink(target: string): string | null {
   const { path: linkPath, fragment } = splitFragment(target);
   const github = parseGitHubSource(linkPath);
   if (!github) return null;
-  const { commit } = resolveCommit(github, lockfile);
+  const { commit } = resolveCommit(github);
   return `https://github.com/${github.owner}/${github.repo}/blob/${commit}/${github.sourcePath}${fragment}`;
 }
 
@@ -202,12 +187,11 @@ export function resolveMarkdownLinks(
   installedPath: string,
   projectRoot: string,
   config: LinkResolution,
-  lockfile: VulykLockfile,
   depth: number,
 ): MarkdownResolution {
   const github = parseGitHubSource(source);
   if (!github) return { markdown, managedPaths: [] };
-  const { repoCache, commit } = resolveCommit(github, lockfile);
+  const { repoCache, commit } = resolveCommit(github);
   const replacements = extractLinks(markdown).reverse();
   let output = markdown;
   const managedPaths: string[] = [];
@@ -217,7 +201,7 @@ export function resolveMarkdownLinks(
     if (!linkPath || linkPath.startsWith("#")) continue;
 
     if (/^https:\/\/github\.com\//i.test(linkPath)) {
-      const pinned = pinAbsoluteGitHubLink(link.target, lockfile);
+      const pinned = pinAbsoluteGitHubLink(link.target);
       if (!pinned) continue;
       output = `${output.slice(0, link.start)}${pinned}${output.slice(link.end)}`;
       continue;
@@ -248,7 +232,6 @@ export function resolveMarkdownLinks(
         localPath,
         projectRoot,
         config,
-        lockfile,
         depth + 1,
       );
       managedPaths.push(

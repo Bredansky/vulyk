@@ -182,9 +182,7 @@ export function agentsCommand(
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
 
-  // Read previous state (transparently migrates legacy markers on
-  // first run, which is idempotent — if a migration already ran, the
-  // lockfile is now present and we go down the fast path).
+  // Read previous local ownership state (including legacy marker migration).
   const previousState = readState(projectRoot);
 
   log.blue("\nGenerating agent files:");

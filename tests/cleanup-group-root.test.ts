@@ -92,7 +92,7 @@ void test("applyCleanupDelta does not delete a user file that is not in prev", (
   writeFile(path.join(projectRoot, "docs", "external", "my-notes.md"), "mine");
 
   // prev/curr only track alpha.md; my-notes.md is invisible to the
-  // lockfile-based delta. It must survive untouched.
+  // ownership-state delta. It must survive untouched.
   applyCleanupDelta(
     projectRoot,
     ["docs/external/alpha.md"],

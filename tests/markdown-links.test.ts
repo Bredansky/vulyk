@@ -7,7 +7,6 @@ import { execFileSync } from "node:child_process";
 import { resolveMarkdownLinks } from "../src/lib/markdown-links.js";
 import { getRepoCachePath } from "../src/lib/cache.js";
 import type { LinkResolution } from "../src/types.js";
-import type { VulykLockfile } from "../src/lib/lockfile.js";
 
 interface TestRepository {
   root: string;
@@ -51,12 +50,11 @@ function makeFixtures(): {
   repository: TestRepository;
   otherRepository: TestRepository;
 } {
+  const otherRepository = makeRepository({ "README.md": "# Other\n" });
   const repository = makeRepository({
-    "docs/guide.md":
-      "See [Architecture](./architecture.md#layers).\nSee [Remote](https://github.com/example/other/blob/main/README.md#intro).\nSee [React](https://react.dev/learn).\n",
+    "docs/guide.md": `See [Architecture](./architecture.md#layers).\nSee [Remote](https://github.com/example/other/blob/${otherRepository.commit}/README.md#intro).\nSee [React](https://react.dev/learn).\n`,
     "docs/architecture.md": "# Layers\n",
   });
-  const otherRepository = makeRepository({ "README.md": "# Other\n" });
   seedGitHubCache("example", "docs", repository);
   seedGitHubCache("example", "other", otherRepository);
   return { repository, otherRepository };
@@ -74,7 +72,6 @@ void test("resolveMarkdownLinks rewrites relative Markdown links and preserves f
   const { repository } = makeFixtures();
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-consumer-"));
   const installedPath = path.join(projectRoot, "docs", "external", "guide.md");
-  const lockfile: VulykLockfile = { github: {} };
   const source = `https://github.com/example/docs/blob/${repository.commit}/docs/guide.md`;
 
   const result = resolveMarkdownLinks(
@@ -83,7 +80,6 @@ void test("resolveMarkdownLinks rewrites relative Markdown links and preserves f
     installedPath,
     projectRoot,
     config(),
-    lockfile,
     0,
   );
 
@@ -100,11 +96,10 @@ void test("resolveMarkdownLinks rewrites relative Markdown links and preserves f
   assert.match(result.markdown, /https:\/\/react\.dev\/learn/);
 });
 
-void test("resolveMarkdownLinks pins absolute GitHub refs and records the resolution", () => {
+void test("resolveMarkdownLinks preserves SHA-pinned absolute GitHub links", () => {
   const { repository, otherRepository } = makeFixtures();
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-consumer-"));
   const installedPath = path.join(projectRoot, "docs", "external", "guide.md");
-  const lockfile: VulykLockfile = { github: {} };
   const source = `https://github.com/example/docs/blob/${repository.commit}/docs/guide.md`;
 
   const result = resolveMarkdownLinks(
@@ -113,7 +108,6 @@ void test("resolveMarkdownLinks pins absolute GitHub refs and records the resolu
     installedPath,
     projectRoot,
     config(),
-    lockfile,
     0,
   );
 
@@ -121,5 +115,37 @@ void test("resolveMarkdownLinks pins absolute GitHub refs and records the resolu
     result.markdown,
     /https:\/\/github\.com\/example\/other\/blob\/[0-9a-f]{40}\/README\.md#intro/,
   );
-  assert.equal(lockfile.github["example/other@main"], otherRepository.commit);
+  assert.ok(result.markdown.includes(otherRepository.commit));
+});
+
+void test("resolveMarkdownLinks rejects moving refs without a lockfile", () => {
+  const { repository } = makeFixtures();
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vulyk-consumer-"));
+  const installedPath = path.join(projectRoot, "docs", "external", "guide.md");
+  const pinnedSource = `https://github.com/example/docs/blob/${repository.commit}/docs/guide.md`;
+
+  assert.throws(
+    () =>
+      resolveMarkdownLinks(
+        "See [Remote](https://github.com/example/other/blob/main/README.md)",
+        pinnedSource,
+        installedPath,
+        projectRoot,
+        config(),
+        0,
+      ),
+    /must use a 40-character commit SHA/,
+  );
+  assert.throws(
+    () =>
+      resolveMarkdownLinks(
+        "# Guide",
+        "https://github.com/example/docs/blob/main/docs/guide.md",
+        installedPath,
+        projectRoot,
+        config(),
+        0,
+      ),
+    /must use a 40-character commit SHA/,
+  );
 });

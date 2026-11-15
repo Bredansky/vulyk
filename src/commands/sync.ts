@@ -16,9 +16,7 @@ import {
 import { refreshGitignore } from "../lib/gitignore.js";
 import { log } from "../lib/log.js";
 import { cleanupStale } from "../lib/cleanup.js";
-import { pinSpecifier } from "../lib/specifier.js";
 import { readState, writeState } from "../lib/state.js";
-import { githubLockKey, readLockfile, writeLockfile } from "../lib/lockfile.js";
 import { getProjectTempPath } from "../lib/cache.js";
 import { resolveMarkdownLinks } from "../lib/markdown-links.js";
 import type { Manifest } from "../types.js";
@@ -43,7 +41,6 @@ async function syncEntry(
   projectRoot: string,
   manifest: Manifest,
   newSyncPaths: string[],
-  lockfile: ReturnType<typeof readLockfile>,
 ): Promise<string | null | undefined> {
   const entry = getEntry(manifest, name);
   if (!entry) return undefined;
@@ -80,18 +77,12 @@ async function syncEntry(
     }
     try {
       const resolved = parseSource(entry.source);
-      let sourceToFetch = entry.source;
       if (resolved.kind === "git" && !/^[0-9a-f]{40}$/i.test(resolved.ref)) {
-        const parts = new URL(entry.source).pathname.split("/").filter(Boolean);
-        const owner = parts[0];
-        const repo = parts[1];
-        const locked =
-          owner && repo
-            ? lockfile.github[githubLockKey(owner, repo, resolved.ref)]
-            : undefined;
-        if (locked) sourceToFetch = pinSpecifier(entry.source, locked);
+        throw new Error(
+          `GitHub source for "${name}" must be pinned to a 40-character commit SHA in vulyk.config.ts. Run "npx vulyk update ${name}" to pin it.`,
+        );
       }
-      const commit = await fetchSource(parseSource(sourceToFetch), tmpDir);
+      await fetchSource(resolved, tmpDir);
       const installSrc = resolveFetchedInstallSource(entry.source, tmpDir);
       const result = install(name, installSrc, outPaths, {
         gitignore,
@@ -109,11 +100,10 @@ async function syncEntry(
           const installedBody = fs.readFileSync(installedPath, "utf8");
           const resolvedMarkdown = resolveMarkdownLinks(
             installedBody,
-            sourceToFetch,
+            entry.source,
             installedPath,
             projectRoot,
             manifest.linkResolution,
-            lockfile,
             0,
           );
           fs.writeFileSync(installedPath, resolvedMarkdown.markdown);
@@ -123,16 +113,6 @@ async function syncEntry(
         }
       }
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      if (commit) {
-        const sourceUrl = new URL(entry.source);
-        const parts = sourceUrl.pathname.split("/").filter(Boolean);
-        const owner = parts[0];
-        const repo = parts[1];
-        const ref = parts[3];
-        if (owner && repo && ref && !/^[0-9a-f]{40}$/i.test(ref)) {
-          lockfile.github[githubLockKey(owner, repo, ref)] = commit;
-        }
-      }
     } catch (err) {
       log.error(
         `Failed to sync "${name}": ${err instanceof Error ? err.message : String(err)}`,
@@ -159,7 +139,6 @@ export async function syncCommand(): Promise<boolean> {
 
   const manifest = readManifest(manifestPath);
   const projectRoot = path.dirname(manifestPath);
-  const lockfile = readLockfile(projectRoot);
 
   // Read local generated-file ownership state.
   const previousState = readState(projectRoot);
@@ -176,7 +155,6 @@ export async function syncCommand(): Promise<boolean> {
       projectRoot,
       manifest,
       newSyncPaths,
-      lockfile,
     );
     if (syncResult === null) {
       failed = true;
@@ -195,10 +173,6 @@ export async function syncCommand(): Promise<boolean> {
   // produced by this sync are deleted (file-, dir-, or empty-parent
   // cleanup happens inside applyCleanupDelta).
   cleanupStale(projectRoot, previousState.syncPaths, newSyncPaths);
-
-  // Persist the resolved GitHub refs separately from executable config.
-
-  writeLockfile(projectRoot, lockfile);
 
   // We deliberately preserve agentPaths so a subsequent `vulyk agents`
   // can reconcile against what it produces.

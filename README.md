@@ -57,7 +57,7 @@ npx vulyk agents
 | `vulyk find-docs <file>`   | Prints the tracked docs that apply to a file                                   |
 | `vulyk find-targets <doc>` | Prints the targets a doc applies to                                            |
 
-`sync` is the install step and `agents` is the generate step — each only writes what changed, and both are safe to re-run. Run `vulyk stage` after them to stage only the files Vulyk owns (including deletions from replaced or disabled entries), without staging unrelated worktree changes. Untracked files excluded by `.gitignore` stay ignored; the Vulyk lockfile and repository-owned `.gitignore` are not auto-staged.
+`sync` is the install step and `agents` is the generate step — each only writes what changed, and both are safe to re-run. Run `vulyk stage` after them to stage only the files Vulyk owns (including deletions from replaced or disabled entries), without staging unrelated worktree changes. Untracked files excluded by `.gitignore` stay ignored; repository-owned `.gitignore` is not auto-staged.
 
 **`vulyk add` flags:** `--name` sets or reuses an entry name; `--group` forces a group instead of auto-detecting it; `--targets` sets comma-separated target paths; `--description` sets the routing description; `--render` chooses `summary` or `embed`. GitHub sources are pinned to commits, a local path is stored repo-relative, and re-adding an existing `--name` updates only the fields you passed.
 
@@ -136,24 +136,16 @@ Resolution runs entry, then group rule, then group, then the manifest default.
 | `https://example.com/file.md`                  | A direct markdown URL                               |
 | `https://example.com/archive.zip`              | A direct archive URL                                |
 
-Resolved GitHub refs are recorded in `vulyk.lock.json` with explicit `ref` and `commit` fields,
-grouped by repository:
+GitHub sources are pinned to a full commit SHA directly in `vulyk.config.ts`.
+`vulyk add` pins new sources, `vulyk sync` installs exactly the configured
+commit, and `vulyk update` updates the SHA in the config. There is no
+`vulyk.lock.json`; remove it when upgrading from previous versions.
 
-```json
-{
-  "github": {
-    "Bredansky/pasika": [
-      { "ref": "main", "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
-    ]
-  }
-}
-```
-
-The ref identifies the configured Git branch or ref; the commit pins the exact
-revision used by later `sync` runs. Multiple refs from one repository have
-separate records. When there are no moving refs, the file contains
-`{ "github": {} }`. The previous `"owner/repo@ref": "commit"` format
-is accepted and automatically migrated on the next `sync`.
+To preserve reproducibility, `sync` rejects GitHub sources with moving refs
+such as `main` or `HEAD` until they are pinned via `vulyk update`.
+When `linkResolution` is enabled, absolute GitHub Markdown links must
+likewise use a full commit SHA; relative links resolve against the pinned
+source commit.
 
 A folder source is installed as it is; a single-file GitHub source can have its relative links resolved by opting in with `linkResolution`, which copies the linked targets into a shared output path and rewrites the links to point there:
 
@@ -190,7 +182,7 @@ Either way the copy still lands in `outputPaths`, so an embedded doc stays on di
 - `.vulyk/state.json` records which files vulyk installed; `.vulyk/cache/` and `.vulyk/tmp/` hold working data. All three are ignored local state.
 - Cleanup is conservative: `vulyk sync` removes only files it recorded **and** that no enabled entry claims. A file you put in an output path yourself is never touched.
 - The root `.gitignore` gains the managed copies that are not part of your own tree. A local source path is never gitignored, even when it shares a path with an output path.
-- `vulyk.lock.json` is committed; it pins GitHub refs only and never the executable config, which stays the source of intent. `vulyk update [name]` is what moves it forward.
+- `vulyk.config.ts` is the single source of truth for remote GitHub commit SHAs. `vulyk update [name]` moves the configured pin forward. No separate lockfile is created.
 
 ## 📚 Documentation
 
