@@ -136,7 +136,26 @@ Resolution runs entry, then group rule, then group, then the manifest default.
 | `https://example.com/file.md`                  | A direct markdown URL                               |
 | `https://example.com/archive.zip`              | A direct archive URL                                |
 
-Resolved GitHub refs are recorded in `vulyk.lock.json`, which holds nothing else. A folder source is installed as it is; a single-file GitHub source can have its relative links resolved by opting in with `linkResolution`, which copies the linked targets into a shared output path and rewrites the links to point there:
+Resolved GitHub refs are recorded in `vulyk.lock.json` with explicit `ref` and `commit` fields,
+grouped by repository:
+
+```json
+{
+  "github": {
+    "Bredansky/pasika": [
+      { "ref": "main", "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+    ]
+  }
+}
+```
+
+The ref identifies the configured Git branch or ref; the commit pins the exact
+revision used by later `sync` runs. Multiple refs from one repository have
+separate records. When there are no moving refs, the file contains
+`{ "github": {} }`. The previous `"owner/repo@ref": "commit"` format
+is accepted and automatically migrated on the next `sync`.
+
+A folder source is installed as it is; a single-file GitHub source can have its relative links resolved by opting in with `linkResolution`, which copies the linked targets into a shared output path and rewrites the links to point there:
 
 ```ts
 linkResolution: {
