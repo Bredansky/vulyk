@@ -28,7 +28,7 @@ function writeFile(filePath: string, body: string): void {
   fs.writeFileSync(filePath, body, "utf8");
 }
 
-function readLockfile(projectRoot: string): VulykState {
+function readOwnershipState(projectRoot: string): VulykState {
   return readState(projectRoot);
 }
 
@@ -46,7 +46,7 @@ void test("agentsCommand dedups agentPaths when many entries share the same targ
   // agents: ["AGENTS.md", "CLAUDE.md"]; every entry has targets: ["."].
   // Without dedup, writeState would persist CLAUDE.md 10 times in
   // agentPaths and AGENTS.md 1 time — total 11. With the boundary dedup
-  // (and writeState's defensive Set dedup), the lockfile lands with
+  // (and writeState's defensive Set dedup), the state records
   // exactly ["AGENTS.md", "CLAUDE.md"].
   const projectRoot = makeTempProject();
   createdDirs.push(projectRoot);
@@ -85,8 +85,8 @@ void test("agentsCommand dedups agentPaths when many entries share the same targ
   try {
     agentsCommand();
 
-    const lock = readLockfile(projectRoot);
-    assert.ok(Array.isArray(lock.agentPaths), "lockfile has agentPaths");
+    const lock = readOwnershipState(projectRoot);
+    assert.ok(Array.isArray(lock.agentPaths), "state has agentPaths");
     // Pin sorted shape explicitly: catches both a dedup regression
     // (length > 2) AND a future writeState ordering regression
     // (entries present but in the wrong order).

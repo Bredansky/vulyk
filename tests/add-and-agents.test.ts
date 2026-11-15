@@ -100,7 +100,7 @@ void test("addCommand installs a local skill and writes config inline when no gr
   const lock = readOwnershipState(projectRoot);
   assert.ok(
     lock.syncPaths.includes(".agents/skills/alpha"),
-    `expected lockfile syncPaths to include .agents/skills/alpha, got ${JSON.stringify(lock.syncPaths)}`,
+    `expected managed state syncPaths to include .agents/skills/alpha, got ${JSON.stringify(lock.syncPaths)}`,
   );
 });
 
@@ -175,12 +175,12 @@ void test("addCommand installs a local doc and writes config inline when no grou
     true,
   );
 
-  // Symmetric to the dir-source tests: the lockfile tracks the file-source
+  // Symmetric to the dir-source tests: the ownership state tracks the file-source
   // install at its destination file path (no suffix magic).
   const lock = readOwnershipState(projectRoot);
   assert.ok(
     lock.syncPaths.includes("docs/external/guide.md"),
-    `expected lockfile syncPaths to include docs/external/guide.md, got ${JSON.stringify(lock.syncPaths)}`,
+    `expected managed state syncPaths to include docs/external/guide.md, got ${JSON.stringify(lock.syncPaths)}`,
   );
 });
 
@@ -545,9 +545,9 @@ void test("syncCommand installs local skills from disk and supports update", asy
 });
 
 void test("syncCommand prunes tracked managed paths whose entry is removed from vulyk.config.ts", async () => {
-  // Under the lockfile-driven cleanup model, vulyk only removes paths it
+  // Under the ownership-state cleanup model, vulyk only removes paths it
   // previously wrote. To exercise that, we install both entries first so the
-  // lockfile records both, then drop one entry from vulyk.config.ts and re-sync.
+  // state records both, then drop one entry from vulyk.config.ts and re-sync.
   // The corresponding managed dir must be deleted; the kept entry must
   // survive verbatim. User-written files in a managed output path are
   // off-limits to cleanup and are covered by a separate test.

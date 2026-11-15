@@ -422,12 +422,8 @@ export async function addCommand(
     );
   }
 
-  // Persist the manifest (source of INTENT) first, then the lockfile
-  // (cleanup truth). The order matters: if writeManifest were to fail
-  // AFTER writeState succeeded, the lockfile would be ahead of the
-  // manifest and the next `vulyk sync` would treat the just-installed
-  // paths as stale. By writing manifest first, a later writeState failure
-  // simply leaves the next `sync` to re-record the paths (idempotent).
+  // Persist the manifest (source of intent) before the local ownership
+  // state. If state writing fails, the next sync can reconstruct it.
   writeManifest(manifestPath, manifest);
 
   // Preserve agentPaths from prior runs so `vulyk agents` can reconcile

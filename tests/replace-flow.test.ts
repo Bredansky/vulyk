@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { applyCleanupDelta, readState, writeState } from "../src/lib/state.js";
 
-// Replace-entries flow at the lockfile-state level. Exercises what sync.ts / agents.ts
+// Replace-entries flow at the ownership-state level. Exercises what sync.ts / agents.ts
 // do internally (applyCleanupDelta + writeState roundtrip) without depending on remote
 // registry / source downloads. Pure state-machine coverage.
 
